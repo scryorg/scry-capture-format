@@ -45,6 +45,11 @@ source/…             optional source-text files, referenced by a capture's sou
   JS, binaries and archives inside the bundle, any file no capture points to, and any file a capture *does*
   point to but that doesn't match its field's own shape rules — pointing `structure.file` at an `.html`/`.js`
   payload is not a way around the member allow-list (guarantee G6).
+- A reader MAY check a `structure/*.json` or `source/*` member's content incrementally — the instant its bytes
+  are fully available, rather than holding the whole bundle in memory first — using the package's exported
+  `checkStructureMember`/`checkSourceTextMember` functions, then discard the bytes once checked. This exists so
+  a large bundle (a 200+-story Storybook's structure trees alone can run to hundreds of MB) can be validated by
+  a memory-bounded streaming reader without ever retaining every non-image member in full at once.
 - Sidecar mode (for tools that already write one JSON file per image, such as Sentry-style folders): `scf.json` MAY
   omit `captures` and set `"captures": "sidecars"`. Each `images/x.png` then has an optional `images/x.json` holding
   one capture object (its `image` defaults to the neighbouring file; its `id` defaults to the path without extension).

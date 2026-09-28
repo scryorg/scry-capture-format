@@ -3,6 +3,24 @@
 All notable changes to the Scry Capture Format spec, schemas and the `@scrymore/scf` package are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+- **Security (review finding F60, ledger F60):** a memory-bounded streaming bundle reader (e.g. a Cloudflare
+  Worker's ~128 MB isolate) still had to retain every `structure/*.json`/`source/*` member in full up to a
+  per-entry cap, and structure trees alone can run to hundreds of MB across a large Storybook — F32/F50's
+  images-only streaming relief didn't cover them. Fixed: two of `validateBundle`'s per-member content checks
+  are now also exported directly — `checkStructureMember(path, bytes)` (size caps, `scf-tree/1` shape) and
+  `checkSourceTextMember(path, bytes, optedIn)` (size cap, UTF-8/binary sniffing, an opt-in fast path) — moved
+  out of `validateBundle`, not duplicated, so both call sites share one implementation. A caller may now run
+  either the instant a `structure/*.json` or `source/*` member is fully inflated, record the result, discard
+  the bytes, and hand `validateBundle` a new `{checked: true, size}` stand-in for that member instead
+  (`BundleFileChecked`, `isCheckedBundleFile`) — `validateBundle` then skips content-checking it (there are no
+  bytes left to check) but still runs every cross-check (existence, referenced-by-a-capture, the aggregate
+  `SOURCE_TEXT_NOT_OPT_IN` opt-in check). The shape is accepted **only** for those two prefixes; any other
+  member given `{checked, size}` — or a non-image given the existing `{head, size}` — is still rejected with
+  `MEMBER_BYTES_REQUIRED`, byte-identical to before for every case that isn't the new shape. Images-only
+  `{head, size}` (F50) is completely unchanged.
+
 ## [1.0.0] - 2026-09-28
 
 - `{head, size}` entries are accepted for images only; any other member given partially is rejected with `MEMBER_BYTES_REQUIRED`, and JSON, structure trees and source text are always read from full bytes (`bundleFileFull`) (security review F50).

@@ -24,16 +24,28 @@ service that already has a bundle in memory (a Worker or Node process that just 
 directory) rather than on disk as something the CLI can point at. `BundleFiles` is
 `Map<string, BundleFileBytes>` — bundle-relative POSIX path to bytes.
 
-`BundleFileBytes` is `Uint8Array | { head: Uint8Array; size: number }`. Every member MUST be a full
-`Uint8Array` **except** an image (a capture's `image` field): for those, a caller that streams a
-large bundle rather than buffering it whole can instead supply just the image's `head` (enough bytes
-for magic-byte family detection and a header-only PNG/JPEG/WebP dimension read — 64 KiB is generous)
-plus its real total `size`. Every image check (`IMAGE_FORMAT_INVALID`, `IMAGE_TOO_LARGE`,
-`IMAGE_DIMENSION_TOO_LARGE`, `IMAGE_HEADER_UNREADABLE`) behaves identically either way. Two small
-helpers normalize either shape: `bundleFileHead(entry)` (bytes for header inspection) and
-`bundleFileSize(entry)` (the real total byte length). Used by `scry-storybook-upload-service`'s
-bundle-upload route (a genuinely streaming ZIP reader, ledger F31/F32) and
-`scry-build-processing-service`'s own two-pass streaming read.
+`BundleFileBytes` is `Uint8Array | { head: Uint8Array; size: number } | { checked: true; size: number }`.
+Every member MUST be a full `Uint8Array` **except** an image (a capture's `image` field) and a
+`structure/*.json` or `source/*` member:
+
+- An **image** may instead be supplied as `{ head, size }` — just the first bytes of the file (enough
+  for magic-byte family detection and a header-only PNG/JPEG/WebP dimension read — 64 KiB is generous)
+  plus its real total `size`. Every image check (`IMAGE_FORMAT_INVALID`, `IMAGE_TOO_LARGE`,
+  `IMAGE_DIMENSION_TOO_LARGE`, `IMAGE_HEADER_UNREADABLE`) behaves identically either way. Two small
+  helpers normalize either shape: `bundleFileHead(entry)` (bytes for header inspection) and
+  `bundleFileSize(entry)` (the real total byte length).
+- A **`structure/*.json` or `source/*` member** may instead be supplied as `{ checked: true, size }`
+  once its full bytes have already been run through the package's exported `checkStructureMember(path,
+  bytes)` / `checkSourceTextMember(path, bytes, optedIn)` — the same content checks `validateBundle`
+  would otherwise apply inline (size caps, `scf-tree/1` shape, UTF-8/binary sniffing) — and the caller
+  has recorded whatever issues that produced. `validateBundle` then trusts that and only performs its
+  cross-checks (does the member exist, is it referenced by a capture, is `optIn.sourceText` set) rather
+  than re-reading content it no longer has. `isCheckedBundleFile(entry)` tells the two shapes apart.
+  Any other member given either partial shape (a non-image as `{head, size}`, or anything outside
+  `structure/*.json`/`source/*` as `{checked, size}`) is rejected with `MEMBER_BYTES_REQUIRED`.
+
+Used by `scry-storybook-upload-service`'s bundle-upload route (a genuinely streaming ZIP reader,
+ledger F31/F32/F60) and `scry-build-processing-service`'s own two-pass streaming read.
 
 ## Status
 
