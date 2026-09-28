@@ -17,6 +17,24 @@ bundle.**
   validator output, run in CI against every commit.
 - **Reference adapters and converters:** [`examples/`](examples), [`converters/`](converters).
 
+## Programmatic API
+
+Besides the CLI, `@scrymore/scf` exports `validateBundle(input: BundleFiles | string)` for any
+service that already has a bundle in memory (a Worker or Node process that just read a ZIP or a
+directory) rather than on disk as something the CLI can point at. `BundleFiles` is
+`Map<string, BundleFileBytes>` — bundle-relative POSIX path to bytes.
+
+`BundleFileBytes` is `Uint8Array | { head: Uint8Array; size: number }`. Every member MUST be a full
+`Uint8Array` **except** an image (a capture's `image` field): for those, a caller that streams a
+large bundle rather than buffering it whole can instead supply just the image's `head` (enough bytes
+for magic-byte family detection and a header-only PNG/JPEG/WebP dimension read — 64 KiB is generous)
+plus its real total `size`. Every image check (`IMAGE_FORMAT_INVALID`, `IMAGE_TOO_LARGE`,
+`IMAGE_DIMENSION_TOO_LARGE`, `IMAGE_HEADER_UNREADABLE`) behaves identically either way. Two small
+helpers normalize either shape: `bundleFileHead(entry)` (bytes for header inspection) and
+`bundleFileSize(entry)` (the real total byte length). Used by `scry-storybook-upload-service`'s
+bundle-upload route (a genuinely streaming ZIP reader, ledger F31/F32) and
+`scry-build-processing-service`'s own two-pass streaming read.
+
 ## Status
 
 Pre-1.0-publish. This repo is currently **private** and the package is **not published to npm**.
