@@ -1,6 +1,7 @@
 import { fromSbcov } from './from-sbcov.js';
 import { readImageDimensions } from './image-dimensions.js';
 import { sidecarCapturesFromImages } from './sidecars-internal.js';
+import { bundleFileFull, bundleFileHead, bundleFileSize } from './types.js';
 import type { BundleFiles, ScfCapture, ScfManifest, ValidationIssue, ValidationResult } from './types.js';
 
 const SUPPORTED_SCF_VERSIONS = new Set(['1.0']);
@@ -89,7 +90,9 @@ async function readDir(dir: string): Promise<BundleFiles> {
 }
 
 function parseJson(files: BundleFiles, path: string): unknown {
-  return JSON.parse(decoder.decode(files.get(path)));
+  const bytes = bundleFileFull(files.get(path));
+  if (bytes === undefined) throw new Error(`${path} must be supplied in full, not as a {head, size} entry`);
+  return JSON.parse(decoder.decode(bytes));
 }
 
 /**
@@ -184,6 +187,18 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
     return { ok: false, errors, warnings, manifest: null };
   }
 
+  // Ledger F50: the {head, size} shape is for images only. Any other member given partially is refused
+  // outright, so JSON, structure trees and source text are always validated from their full bytes.
+  const partialNonImages = [...files.entries()]
+    .filter(([p, entry]) => !(entry instanceof Uint8Array) && !ALLOWED_IMAGE_EXT.has(extOf(p)))
+    .map(([p]) => p);
+  if (partialNonImages.length > 0) {
+    for (const p of partialNonImages) {
+      errors.push(issue('MEMBER_BYTES_REQUIRED', `Only images may be supplied as {head, size}; ${p} must be supplied in full.`, { path: p }));
+    }
+    return { ok: false, errors, warnings, manifest: null };
+  }
+
   let manifest: ScfManifest;
   let isLegacy = false;
 
@@ -265,19 +280,24 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
         errors.push(issue('IMAGE_FILE_MISSING', `Image file not found in bundle: ${image}`, { id, path: image }));
       } else {
         const ext = extOf(image);
-        const bytes = files.get(image);
-        const family = bytes ? detectImageFamily(bytes) : null;
+        const imageEntry = files.get(image);
+        // `head` is the whole file for a plain entry, or just its first bytes for a `{head, size}`
+        // partial image entry (ledger F31/F32) — either is enough for magic-byte + header-only
+        // dimension checks. `size` is always the image's real total byte length.
+        const head = bundleFileHead(imageEntry);
+        const size = bundleFileSize(imageEntry) ?? 0;
+        const family = head ? detectImageFamily(head) : null;
         if (!ALLOWED_IMAGE_EXT.has(ext) || !family || EXT_FAMILY[ext] !== family) {
           errors.push(issue('IMAGE_FORMAT_INVALID', `Image is not PNG/JPEG/WebP: ${image}`, { id, path: image }));
         }
-        if ((bytes?.byteLength ?? 0) > MAX_IMAGE_BYTES) {
+        if (size > MAX_IMAGE_BYTES) {
           errors.push(issue('IMAGE_TOO_LARGE', `Image is over 20 MB: ${image}`, { id, path: image }));
         }
-        if (bytes && family) {
+        if (head && family) {
           // Header-only read (no decode): a tiny file can still declare an enormous canvas, which
           // is a resource-exhaustion risk for whatever decodes it later (ledger F25). An unreadable
           // header (truncated file, or a WebP shape this parser doesn't cover) fails closed.
-          const dims = readImageDimensions(bytes, family);
+          const dims = readImageDimensions(head, family);
           if (!dims) {
             errors.push(
               issue('IMAGE_HEADER_UNREADABLE', `Could not read image dimensions from the header: ${image}`, {
@@ -326,7 +346,7 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
         );
       } else {
         referencedPaths.add(structPath);
-        const structBytes = files.get(structPath);
+        const structBytes = bundleFileFull(files.get(structPath));
         if (!structBytes) {
           errors.push(
             issue('STRUCTURE_FILE_MISSING', `structure.file not found in bundle: ${structPath}`, { id, path: structPath })
@@ -377,7 +397,7 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
         );
       } else {
         referencedPaths.add(sourcePath);
-        const sourceBytes = files.get(sourcePath);
+        const sourceBytes = bundleFileFull(files.get(sourcePath));
         if (!sourceBytes) {
           errors.push(
             issue('SOURCE_TEXT_FILE_MISSING', `sourceText.file not found in bundle: ${sourcePath}`, {

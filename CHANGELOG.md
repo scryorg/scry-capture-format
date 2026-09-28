@@ -5,7 +5,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [1.0.0] - 2026-09-28
 
+- `{head, size}` entries are accepted for images only; any other member given partially is rejected with `MEMBER_BYTES_REQUIRED`, and JSON, structure trees and source text are always read from full bytes (`bundleFileFull`) (security review F50).
+
 - Validator rejects unsafe bundle paths (absolute, backslash, drive letters, empty, `.` or `..` segments) for members and for every path a capture references: error `UNSAFE_PATH` (security review F27).
+- `BundleFiles` image entries may now be supplied as `{head, size}` instead of full bytes — the first bytes of
+  the file (enough for magic-byte family detection and a header-only dimension read) plus the image's real
+  total size. Every other check (`IMAGE_FORMAT_INVALID`, `IMAGE_TOO_LARGE`, `IMAGE_DIMENSION_TOO_LARGE`,
+  `IMAGE_HEADER_UNREADABLE`) behaves identically to a full `Uint8Array`. Added so a caller that streams a
+  large bundle rather than buffering it whole (security review F31/F32: a Cloudflare Worker's ~128 MB isolate
+  can't hold a fully-inflated multi-hundred-MB bundle) never has to materialize a full decoded image just to
+  validate it. New exports `BundleFileBytes`, `bundleFileHead`, `bundleFileSize`. Every non-image member
+  (`scf.json`, `structure.file`/`sourceText.file`, sidecar JSON) must still be supplied in full.
 
 Initial public release, promoted from the 2026-09-27 founder-reviewed draft
 (`scry-management/features/capture-sources/spec/scry-capture-format-v1-draft.md`).
