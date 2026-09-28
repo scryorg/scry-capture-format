@@ -7,12 +7,16 @@ export { fromSbcov, toStorybookId } from './from-sbcov.js';
 export { fromSidecars } from './from-sidecars.js';
 export { storageKey, companionKey, sourceKeyOf } from './storage-key.js';
 export { sha256Hex } from './sha256.js';
-export { bundleFileFull, bundleFileHead, bundleFileSize, isCheckedBundleFile } from './types.js';
+export { bundleFileFull, bundleFileHead, bundleFileSize, isCheckedBundleFile, isMeasuredBundleFile } from './types.js';
+export { detectImageFamily, measureImage, readImageDimensions, MEASURE_IMAGE_MAX_PREFIX_BYTES } from './image-dimensions.js';
+
+export type { ImageFamily, MeasuredImage } from './image-dimensions.js';
 
 export type {
   BundleFileBytes,
   BundleFileChecked,
   BundleFileHeadAndSize,
+  BundleFileMeasured,
   BundleFiles,
   CaptureBlock,
   CaptureCode,

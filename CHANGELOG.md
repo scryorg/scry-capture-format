@@ -5,6 +5,30 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+- **Security (review finding F69, ledger F69 — third recurrence of F32/F60's root cause):** F60's fix
+  covered `structure/*.json`/`source/*` members, but left the IMAGE category exposed to the same
+  problem: the existing `{head, size}` shape (F31/F32/F50) still retains an image's ENTIRE content
+  whenever its real size is at or under the head cap (64 KiB by default), and images had no aggregate
+  cap of their own — an 8,000-entry bundle of honest, individually-tiny images could add up to ~500 MB
+  of live retained memory in a ~128 MB Cloudflare Worker isolate, no ratio trick or declared-size lie
+  needed. Fixed: a new exported `measureImage(prefixBytes)` (`image-dimensions.ts`) combines magic-byte
+  family detection with a header-only dimension read into one call designed for a bounded *prefix* of
+  an image's real bytes (documented up to 64 KiB, matching this package's own recommendation) — a
+  streaming caller feeds it whatever prefix it has accumulated, then discards that prefix entirely and
+  keeps only the small `{measured: true, family, width, height, size}` record (`BundleFileMeasured`,
+  `isMeasuredBundleFile`) instead of any bytes. `validateBundle` applies the exact same
+  `IMAGE_FORMAT_INVALID`/`IMAGE_TOO_LARGE`/`IMAGE_DIMENSION_TOO_LARGE` rules to that record as it
+  already does for a full image or a `{head, size}` entry (a `null` `family` — `measureImage`'s own
+  collapsed "couldn't identify or measure it at all" result — is rejected as `IMAGE_FORMAT_INVALID`).
+  The shape is accepted **only** for image-extension paths, same restriction as `{head, size}` (F50).
+  Existing `{head, size}` and full-`Uint8Array` image entries are completely unchanged — this is a new,
+  additional shape, not a replacement.
+- **Spec (ledger F69):** two new bundle-wide MUSTs, independent of any per-member memory bound: a
+  bundle must not have more than 20,000 members (`BUNDLE_TOO_MANY_MEMBERS`) or declare more than
+  10,000 captures (`BUNDLE_TOO_MANY_CAPTURES`), checked by `validateBundle` itself (the shared gate,
+  guarantee G7) before any per-member or per-capture work runs — so a bundle is bounded regardless of
+  how many members or captures it declares, not just by how large any one of them is. The JSON Schema's
+  `captures` array now also carries a matching `maxItems: 10000`.
 - **Security (review finding F60, ledger F60):** a memory-bounded streaming bundle reader (e.g. a Cloudflare
   Worker's ~128 MB isolate) still had to retain every `structure/*.json`/`source/*` member in full up to a
   per-entry cap, and structure trees alone can run to hundreds of MB across a large Storybook — F32/F50's
