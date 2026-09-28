@@ -70,9 +70,11 @@ optional structure/source-text files referenced from a capture, or JSON sidecars
 - [ ] `capture.scale` is set to the true pixel-per-point/CSS-px ratio you captured at, not assumed to be 1.
 - [ ] `capture.crop` reflects what you actually captured (`root` vs `viewport` vs `fullpage`) — don't guess.
 - [ ] A `structure` tree is included if your tool already had one available without extra work; otherwise
-      it's fine to leave out entirely.
+      it's fine to leave out entirely. If included, its file lives under `structure/` and ends in `.json`.
 - [ ] `sourceText` is empty/absent unless the user explicitly opted in, and your adapter prints a notice
-      when it is included.
+      when it is included. If included: its file lives under `source/` as plain UTF-8 text (never binary),
+      under 1 MB, and the manifest sets `optIn.sourceText: true` — the validator rejects `sourceText` on
+      any capture if that flag isn't set.
 - [ ] `links.live` and `links.page`, if you set them, are absolute `https:` URLs with no
       username/password in them (`https://user:pw@host/...` is rejected) — Scry may embed
       `links.live` as an iframe, so this isn't optional hardening.

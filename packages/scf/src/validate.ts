@@ -1,11 +1,15 @@
 import { fromSbcov } from './from-sbcov.js';
+import { readImageDimensions } from './image-dimensions.js';
 import { sidecarCapturesFromImages } from './sidecars-internal.js';
 import type { BundleFiles, ScfCapture, ScfManifest, ValidationIssue, ValidationResult } from './types.js';
 
 const SUPPORTED_SCF_VERSIONS = new Set(['1.0']);
 const ALLOWED_IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'webp']);
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-const MAX_STRUCTURE_BYTES = 2 * 1024 * 1024;
+const MAX_IMAGE_DIMENSION = 16384;
+const MAX_STRUCTURE_BYTES = 2 * 1024 * 1024; // soft (warning) threshold, spec's SHOULD
+const MAX_STRUCTURE_HARD_BYTES = 10 * 1024 * 1024; // hard (error) threshold
+const MAX_SOURCE_TEXT_BYTES = 1 * 1024 * 1024;
 const MAX_LINK_URL_LENGTH = 2048;
 
 const decoder = new TextDecoder();
@@ -99,6 +103,57 @@ function checkLinkIsSafeHttps(url: string): boolean {
   return true;
 }
 
+const BINARY_MAGIC_PREFIXES: number[][] = [
+  [0x89, 0x50, 0x4e, 0x47], // PNG
+  [0xff, 0xd8, 0xff], // JPEG
+  [0x47, 0x49, 0x46, 0x38], // GIF8
+  [0x50, 0x4b, 0x03, 0x04], // ZIP (also docx/xlsx/jar/…)
+  [0x50, 0x4b, 0x05, 0x06], // empty ZIP
+  [0x7f, 0x45, 0x4c, 0x46], // ELF
+  [0x1f, 0x8b], // gzip
+  [0x25, 0x50, 0x44, 0x46], // %PDF
+  [0x52, 0x49, 0x46, 0x46], // RIFF (webp/wav/avi)
+];
+
+function startsWithAny(bytes: Uint8Array, prefixes: number[][]): boolean {
+  return prefixes.some((prefix) => prefix.length <= bytes.length && prefix.every((b, i) => bytes[i] === b));
+}
+
+/**
+ * `sourceText` is meant to hold plain source code, copied verbatim into the bundle (spec:
+ * "opt-in only"). Security review finding #2 / ledger F24: reject anything that isn't actually
+ * UTF-8 text — a NUL byte, a recognised binary magic number, or a decode failure — so a
+ * `sourceText.file` can't be used to smuggle an arbitrary binary (or an executable-flavoured file
+ * masquerading as "source") past the member allow-list.
+ */
+function looksLikeBinary(bytes: Uint8Array): boolean {
+  if (startsWithAny(bytes, BINARY_MAGIC_PREFIXES)) return true;
+  const scanLength = Math.min(bytes.length, 8192);
+  for (let i = 0; i < scanLength; i++) {
+    if (bytes[i] === 0x00) return true;
+  }
+  return false;
+}
+
+function isValidUtf8(bytes: Uint8Array): boolean {
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Loose shape check for scf-tree/1 (spec/scf-1.0.md) — not a full recursive schema validation,
+ *  just enough to confirm this is actually a structure tree and not an arbitrary JSON payload. */
+function looksLikeScfTree(parsed: unknown): boolean {
+  if (!parsed || typeof parsed !== 'object') return false;
+  const tree = parsed as { format?: unknown; root?: unknown };
+  if (tree.format !== 'scf-tree/1') return false;
+  if (!tree.root || typeof tree.root !== 'object') return false;
+  return typeof (tree.root as { type?: unknown }).type === 'string';
+}
+
 /**
  * Validates an SCF bundle (or a legacy sbcov bundle, converted first) against spec/scf-1.0.md.
  * `input` is either an in-memory bundle (a Map of bundle-relative POSIX path -> bytes — the shape
@@ -164,6 +219,7 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
   const seenIds = new Map<string, number>();
   const seenImages = new Map<string, string[]>();
   const referencedPaths = new Set<string>(['scf.json']);
+  const sourceTextCaptureIds: string[] = [];
 
   for (const capture of captures) {
     const id = typeof capture?.id === 'string' ? capture.id : undefined;
@@ -190,6 +246,28 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
         if ((bytes?.byteLength ?? 0) > MAX_IMAGE_BYTES) {
           errors.push(issue('IMAGE_TOO_LARGE', `Image is over 20 MB: ${image}`, { id, path: image }));
         }
+        if (bytes && family) {
+          // Header-only read (no decode): a tiny file can still declare an enormous canvas, which
+          // is a resource-exhaustion risk for whatever decodes it later (ledger F25). An unreadable
+          // header (truncated file, or a WebP shape this parser doesn't cover) fails closed.
+          const dims = readImageDimensions(bytes, family);
+          if (!dims) {
+            errors.push(
+              issue('IMAGE_HEADER_UNREADABLE', `Could not read image dimensions from the header: ${image}`, {
+                id,
+                path: image,
+              })
+            );
+          } else if (dims.width > MAX_IMAGE_DIMENSION || dims.height > MAX_IMAGE_DIMENSION) {
+            errors.push(
+              issue(
+                'IMAGE_DIMENSION_TOO_LARGE',
+                `Image is ${dims.width}x${dims.height}px, over the ${MAX_IMAGE_DIMENSION}px limit: ${image}`,
+                { id, path: image }
+              )
+            );
+          }
+        }
       }
       const list = seenImages.get(image) ?? [];
       list.push(id ?? '(no id)');
@@ -205,25 +283,94 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
 
     const structure = capture?.structure;
     if (structure && typeof structure === 'object' && typeof structure.file === 'string') {
-      referencedPaths.add(structure.file);
-      const structBytes = files.get(structure.file);
-      if (!structBytes) {
+      const structPath = structure.file;
+      // Ledger F24: structure.file must live under structure/, end in .json, and actually be a
+      // scf-tree/1 document — otherwise it's a member-allow-list bypass (point it at an arbitrary
+      // .html/.js payload). A path failing this is NOT added to referencedPaths, so if the file
+      // exists at all it is also flagged FORBIDDEN_MEMBER.
+      const pathOk = structPath.startsWith('structure/') && extOf(structPath) === 'json';
+      if (!pathOk) {
         errors.push(
-          issue('IMAGE_FILE_MISSING', `structure.file not found in bundle: ${structure.file}`, {
-            id,
-            path: structure.file,
-          })
+          issue(
+            'STRUCTURE_PATH_INVALID',
+            `structure.file must be a .json path under structure/: ${structPath}`,
+            { id, path: structPath }
+          )
         );
-      } else if (structBytes.byteLength > MAX_STRUCTURE_BYTES) {
-        warnings.push(
-          issue('STRUCTURE_TREE_LARGE', `structure file is over 2 MB: ${structure.file}`, { id, path: structure.file })
-        );
+      } else {
+        referencedPaths.add(structPath);
+        const structBytes = files.get(structPath);
+        if (!structBytes) {
+          errors.push(
+            issue('STRUCTURE_FILE_MISSING', `structure.file not found in bundle: ${structPath}`, { id, path: structPath })
+          );
+        } else if (structBytes.byteLength > MAX_STRUCTURE_HARD_BYTES) {
+          errors.push(
+            issue('STRUCTURE_TREE_TOO_LARGE', `structure file is over 10 MB: ${structPath}`, { id, path: structPath })
+          );
+        } else {
+          if (structBytes.byteLength > MAX_STRUCTURE_BYTES) {
+            warnings.push(
+              issue('STRUCTURE_TREE_LARGE', `structure file is over 2 MB: ${structPath}`, { id, path: structPath })
+            );
+          }
+          let parsedTree: unknown;
+          try {
+            parsedTree = JSON.parse(decoder.decode(structBytes));
+          } catch {
+            parsedTree = undefined;
+          }
+          if (!looksLikeScfTree(parsedTree)) {
+            errors.push(
+              issue(
+                'STRUCTURE_FORMAT_INVALID',
+                `structure.file does not parse as a scf-tree/1 document: ${structPath}`,
+                { id, path: structPath }
+              )
+            );
+          }
+        }
       }
     }
 
     const sourceText = capture?.sourceText;
     if (sourceText && typeof sourceText === 'object' && typeof sourceText.file === 'string') {
-      referencedPaths.add(sourceText.file);
+      const sourcePath = sourceText.file;
+      sourceTextCaptureIds.push(id ?? '(no id)');
+      // Ledger F24: sourceText.file must live under source/, exist, be plausible UTF-8 text (never
+      // a binary payload), and stay under the size cap. A path failing the prefix/extension check
+      // is NOT added to referencedPaths (same reasoning as structure.file above).
+      const pathOk = sourcePath.startsWith('source/');
+      if (!pathOk) {
+        errors.push(
+          issue('SOURCE_TEXT_PATH_INVALID', `sourceText.file must be a path under source/: ${sourcePath}`, {
+            id,
+            path: sourcePath,
+          })
+        );
+      } else {
+        referencedPaths.add(sourcePath);
+        const sourceBytes = files.get(sourcePath);
+        if (!sourceBytes) {
+          errors.push(
+            issue('SOURCE_TEXT_FILE_MISSING', `sourceText.file not found in bundle: ${sourcePath}`, {
+              id,
+              path: sourcePath,
+            })
+          );
+        } else if (sourceBytes.byteLength > MAX_SOURCE_TEXT_BYTES) {
+          errors.push(
+            issue('SOURCE_TEXT_TOO_LARGE', `sourceText.file is over 1 MB: ${sourcePath}`, { id, path: sourcePath })
+          );
+        } else if (looksLikeBinary(sourceBytes) || !isValidUtf8(sourceBytes)) {
+          errors.push(
+            issue('SOURCE_TEXT_NOT_TEXT', `sourceText.file is not valid UTF-8 text: ${sourcePath}`, {
+              id,
+              path: sourcePath,
+            })
+          );
+        }
+      }
     }
 
     const live = capture?.links?.live;
@@ -268,6 +415,19 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
       if (referencedPaths.has(path)) continue;
       errors.push(issue('FORBIDDEN_MEMBER', `Bundle member is not referenced by any capture: ${path}`, { path }));
     }
+  }
+
+  // Ledger F24: sourceText is opt-in only (spec: "Adapters MUST NOT include it unless the user
+  // explicitly turns it on"). The manifest must say so explicitly (optIn.sourceText: true) — the
+  // validator has no other way to tell an intentional inclusion from an adapter bug or a bundle
+  // someone else re-packaged with source text left in from a different run.
+  if (sourceTextCaptureIds.length > 0 && manifest.optIn?.sourceText !== true) {
+    errors.push(
+      issue(
+        'SOURCE_TEXT_NOT_OPT_IN',
+        `${sourceTextCaptureIds.length} capture(s) set sourceText but the manifest does not set optIn.sourceText: true (${sourceTextCaptureIds.join(', ')})`
+      )
+    );
   }
 
   const counts = manifest.counts;

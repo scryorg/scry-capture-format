@@ -36,6 +36,25 @@ Initial public release, promoted from the 2026-09-27 founder-reviewed draft
   revised accordingly: a reader MUST NOT embed it unless its origin is one already trusted for that project.
   This closes the PR 0 portion of F18; PR 5 (dashboard) and PR 8 (scry-link) still need to reuse the existing
   sandboxed embed component and check the URL's origin before treating it as trusted.
+- **Security (review finding #2, ledger F24):** `structure.file` and `sourceText.file` were being added to the
+  member allow-list purely because a capture referenced them, with no check on their own shape — pointing
+  `structure.file` at an arbitrary `.html`/`.js` payload was a working bypass of the bundle's forbidden-member
+  rule (G6). Fixed: `structure.file` MUST now be a `.json` path under `structure/` that parses as a `scf-tree/1`
+  document (`STRUCTURE_PATH_INVALID`, `STRUCTURE_FORMAT_INVALID`), with a 10 MB hard cap
+  (`STRUCTURE_TREE_TOO_LARGE`) alongside the existing 2 MB warning. `sourceText.file` MUST be a path under
+  `source/`, MUST exist (previously unchecked), MUST be valid UTF-8 text with no NUL bytes or recognised binary
+  magic number (`SOURCE_TEXT_NOT_TEXT`), and is capped at 1 MB (`SOURCE_TEXT_TOO_LARGE`). The manifest MUST also
+  set the new `optIn.sourceText: true` field whenever any capture sets `sourceText` (`SOURCE_TEXT_NOT_OPT_IN`) —
+  the validator otherwise has no way to distinguish an intentional inclusion from source text left over in a
+  re-packaged bundle. Any path failing these checks is *not* allow-listed, so if the file exists at all it is
+  also flagged `FORBIDDEN_MEMBER`.
+- **Security (review finding #3, ledger F25):** the spec promises images are "at most 16384 px on the longest
+  side," but only byte size (20 MB) and the magic-byte family were ever checked — a small, well-compressed file
+  can still declare an enormous canvas, a resource-exhaustion risk for whatever decodes it downstream
+  (thumbnailing, pixel diff). Fixed: a new dependency-free `readImageDimensions()` reads width/height straight
+  from the PNG IHDR chunk, the JPEG SOF marker, or the WebP VP8/VP8L/VP8X header (no image decode). Over the
+  limit is `IMAGE_DIMENSION_TOO_LARGE`; a header this parser can't read (truncated file, or an
+  animated/exotic WebP shape) fails closed as `IMAGE_HEADER_UNREADABLE` rather than being silently accepted.
 
 ### Unchanged
 

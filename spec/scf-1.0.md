@@ -36,10 +36,15 @@ structure/…          optional scf-tree/1 files, referenced by a capture's stru
 source/…             optional source-text files, referenced by a capture's sourceText.file (opt-in only)
 ```
 
-- Images MUST be PNG, JPEG or WebP, at most 20 MB each and 16384 px on the longest side.
-- A bundle MUST contain nothing except `scf.json`, files referenced by a capture's `image`, `structure.file` or
-  `sourceText.file`, and optional `*.json` sidecars (below). Scry rejects HTML, JS, binaries and archives inside
-  the bundle, and any file no capture points to, whatever its extension (guarantee G6).
+- Images MUST be PNG, JPEG or WebP, at most 20 MB each and 16384 px on the longest side (checked from the file
+  header, not just the declared extension — see `IMAGE_FORMAT_INVALID`, `IMAGE_HEADER_UNREADABLE`,
+  `IMAGE_DIMENSION_TOO_LARGE`).
+- A bundle MUST contain nothing except `scf.json`, files referenced by a capture's `image` field, a *validly
+  shaped* `structure.file` (a `.json` path under `structure/` that parses as `scf-tree/1`) or `sourceText.file`
+  (a path under `source/` that is valid UTF-8 text), and optional `*.json` sidecars (below). Scry rejects HTML,
+  JS, binaries and archives inside the bundle, any file no capture points to, and any file a capture *does*
+  point to but that doesn't match its field's own shape rules — pointing `structure.file` at an `.html`/`.js`
+  payload is not a way around the member allow-list (guarantee G6).
 - Sidecar mode (for tools that already write one JSON file per image, such as Sentry-style folders): `scf.json` MAY
   omit `captures` and set `"captures": "sidecars"`. Each `images/x.png` then has an optional `images/x.json` holding
   one capture object (its `image` defaults to the neighbouring file; its `id` defaults to the path without extension).
@@ -82,6 +87,7 @@ source/…             optional source-text files, referenced by a capture's sou
 | `counts.declared` | SHOULD | How many captures the adapter meant to make. |
 | `counts.captured` | SHOULD | How many are in the bundle. MUST equal `captures.length` when both are present (and captures is an array, not `"sidecars"`). |
 | `counts.skipped[]` | SHOULD | One entry per missing capture: `id`, `reason` (`error`, `timeout`, `filtered`, `unsupported`, `empty`), `detail`. `declared` SHOULD equal `captured + skipped.length` when all three are present. |
+| `optIn.sourceText` | MUST (if any capture sets `sourceText`) | `true` when the adapter's user explicitly turned source-text inclusion on. Required as soon as one capture sets `sourceText`; absent otherwise. |
 | `captures` | MUST | Array of capture objects, or `"sidecars"`. |
 
 ## Stability
@@ -91,7 +97,7 @@ Stable in 1.0: `scf`, `source.kind`, `source.platform`, `source.tool`, `reposito
 `capture.viewport`, `capture.scale`, `capture.size`, `capture.crop`, `links.live`, `links.page`, `tags`, `x-*`.
 
 Experimental in 1.0: `kind` values `region` and `doc-image`, `links.figma`, `flow`, `structure`, `sourceText`,
-sidecar mode.
+`optIn.sourceText`, sidecar mode.
 
 ## Capture object
 
@@ -149,8 +155,8 @@ sidecar mode.
 | `links.page` | MAY | The product URL the capture was taken from (crawler, E2E). MUST be an absolute `https:` URL; Scry links to it, never embeds it automatically. |
 | `links.figma` | MAY | A Figma node URL this capture is meant to match. Scry proposes it as a link. |
 | `flow` | MAY | `{id, name, step, order}` for captures that belong to a user flow. |
-| `structure` | MAY | *Experimental.* A UI tree for this capture, as a JSON file in the bundle: `{file, origin, format}`. `origin` says where it came from: `dom`, `rn-fiber`, `compose-semantics`, `uiautomator`, `xcui-accessibility`, `flutter-widgets`, or `x-<name>`. `format` is `scf-tree/1` (below). |
-| `sourceText` | MAY | *Experimental, opt-in only.* `{file, path}`: the component's source text, copied into the bundle. Adapters MUST NOT include it unless the user explicitly turns it on, and SHOULD say so in their output. |
+| `structure` | MAY | *Experimental.* A UI tree for this capture, as a JSON file in the bundle: `{file, origin, format}`. `file` MUST be a path under `structure/` ending in `.json`, and MUST parse as a `scf-tree/1` document (below) — a path that isn't, or a file whose contents aren't, is rejected outright, not merely ignored. `origin` says where it came from: `dom`, `rn-fiber`, `compose-semantics`, `uiautomator`, `xcui-accessibility`, `flutter-widgets`, or `x-<name>`. `format` is `scf-tree/1`. |
+| `sourceText` | MAY | *Experimental, opt-in only.* `{file, path}`: the component's source text, copied into the bundle. `file` MUST be a path under `source/`, MUST be valid UTF-8 text (no NUL bytes, no binary magic number) of at most 1 MB. Adapters MUST NOT include it unless the user explicitly turns it on, and SHOULD say so in their output; the manifest MUST additionally set `optIn.sourceText: true` when any capture sets `sourceText` — this is what the validator checks, since it can't otherwise tell an intentional inclusion from a bundle someone re-packaged with source text left over from a different run. |
 | `tags` | MAY | Free-form strings. |
 | `x-<vendor>` | MAY | Anything else; preserved and returned by the API, never interpreted. |
 
@@ -229,10 +235,21 @@ Errors fail the whole bundle (exit 1); warnings do not (exit 0).
 | `SHARED_IMAGE` | error | Two or more captures share the same `image` path. |
 | `IMAGE_FORMAT_INVALID` | error | An image file is not PNG, JPEG or WebP by extension/signature. |
 | `IMAGE_TOO_LARGE` | error | An image file is over 20 MB. |
-| `FORBIDDEN_MEMBER` | error | A bundle member is not `scf.json`, an image, a referenced `structure`/`sourceText` file, or a sidecar `*.json`. |
+| `IMAGE_HEADER_UNREADABLE` | error | An image's pixel dimensions could not be read from its header (truncated file, or a WebP shape the validator doesn't parse). Fails closed: an unreadable header is never assumed to be within bounds. |
+| `IMAGE_DIMENSION_TOO_LARGE` | error | An image is over 16384 px on its longest side, read from the file header (never a full decode). |
+| `FORBIDDEN_MEMBER` | error | A bundle member is not `scf.json`, an image, a referenced (and validly-shaped) `structure`/`sourceText` file, or a sidecar `*.json`. |
 | `COUNTS_MISMATCH` | error | `counts.captured` is present and does not equal `captures.length`. |
 | `INVALID_SCALE` | error | `capture.scale` is present and not a finite number greater than 0. |
-| `STRUCTURE_TREE_LARGE` | warning | A referenced `structure` file is over 2 MB. |
+| `STRUCTURE_PATH_INVALID` | error | `structure.file` is not a `.json` path under `structure/`. |
+| `STRUCTURE_FILE_MISSING` | error | `structure.file` does not exist in the bundle. |
+| `STRUCTURE_FORMAT_INVALID` | error | `structure.file` exists but doesn't parse as a `scf-tree/1` document (bad JSON, wrong `format`, or no `root.type`). |
+| `STRUCTURE_TREE_TOO_LARGE` | error | A referenced `structure` file is over 10 MB (hard cap; see `STRUCTURE_TREE_LARGE` for the 2 MB soft warning). |
+| `STRUCTURE_TREE_LARGE` | warning | A referenced `structure` file is over 2 MB (and at or under the 10 MB hard cap). |
+| `SOURCE_TEXT_PATH_INVALID` | error | `sourceText.file` is not a path under `source/`. |
+| `SOURCE_TEXT_FILE_MISSING` | error | `sourceText.file` does not exist in the bundle. |
+| `SOURCE_TEXT_TOO_LARGE` | error | `sourceText.file` is over 1 MB. |
+| `SOURCE_TEXT_NOT_TEXT` | error | `sourceText.file` contains a NUL byte, a recognised binary magic number, or fails to decode as valid UTF-8. |
+| `SOURCE_TEXT_NOT_OPT_IN` | error | One or more captures set `sourceText`, but the manifest doesn't set `optIn.sourceText: true`. |
 | `links.live.not_https` | error | `links.live` is present and is not an absolute `https:` URL, contains userinfo/credentials, or is over 2048 chars. |
 | `links.page.not_https` | error | Same check as above, for `links.page`. |
 | `ID_CHURN` | warning | More than 20% of a source's ids are new versus its previous build (upload-time only; not a bundle-shape check). |

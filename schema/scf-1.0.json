@@ -93,6 +93,14 @@
         }
       }
     },
+    "optIn": {
+      "type": "object",
+      "x-stability": "experimental",
+      "description": "MUST have sourceText: true when any capture sets sourceText (see SOURCE_TEXT_NOT_OPT_IN).",
+      "properties": {
+        "sourceText": { "type": "boolean" }
+      }
+    },
     "captures": {
       "x-stability": "stable",
       "oneOf": [
@@ -230,7 +238,11 @@
           "type": ["object", "null"],
           "x-stability": "experimental",
           "properties": {
-            "file": { "type": "string" },
+            "file": {
+              "type": "string",
+              "pattern": "^structure/.+\\.json$",
+              "description": "Enforced fully by the validator, not just this pattern: the file must also exist and parse as scf-tree/1 (STRUCTURE_FILE_MISSING, STRUCTURE_FORMAT_INVALID)."
+            },
             "origin": {
               "enum": ["dom", "rn-fiber", "compose-semantics", "uiautomator", "xcui-accessibility", "flutter-widgets"]
             },
@@ -241,9 +253,13 @@
         "sourceText": {
           "type": ["object", "null"],
           "x-stability": "experimental",
-          "description": "Opt-in only. Adapters MUST NOT include this unless the user explicitly turns it on.",
+          "description": "Opt-in only. Adapters MUST NOT include this unless the user explicitly turns it on, and the manifest's optIn.sourceText MUST be true.",
           "properties": {
-            "file": { "type": "string" },
+            "file": {
+              "type": "string",
+              "pattern": "^source/.+$",
+              "description": "Enforced fully by the validator: must also exist, be valid UTF-8 text with no binary magic/NUL bytes, and be at most 1 MB (SOURCE_TEXT_FILE_MISSING, SOURCE_TEXT_NOT_TEXT, SOURCE_TEXT_TOO_LARGE)."
+            },
             "path": { "type": "string" }
           }
         },

@@ -25,6 +25,7 @@ describe('conformance fixtures: valid', () => {
       'legacy-sbcov-bundle',
       'structure-tree-warning',
       'id-special-chars',
+      'source-text-optin',
     ]) {
       expect(validNames).toContain(required);
     }
@@ -68,6 +69,12 @@ describe('conformance fixtures: invalid', () => {
       'unsafe-link-data',
       'unsafe-link-http',
       'unsafe-link-userinfo',
+      'unsafe-structure-html',
+      'missing-source-text',
+      'oversized-image-dimensions',
+      'truncated-image-header',
+      'source-text-not-opt-in',
+      'binary-source-text',
     ]) {
       expect(invalidNames).toContain(required);
     }

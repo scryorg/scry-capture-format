@@ -144,6 +144,10 @@ export interface ScfManifest {
   createdAt?: string;
   defaults?: { capture?: CaptureBlock; [key: string]: unknown };
   counts?: ScfCounts;
+  /** MUST be `{ sourceText: true }` when any capture sets `sourceText` — the manifest's explicit
+   *  opt-in acknowledgement (spec: sourceText is "opt-in only"). See guarantee-6-ish check
+   *  SOURCE_TEXT_NOT_OPT_IN in the validator. */
+  optIn?: { sourceText?: boolean };
   captures: ScfCapture[] | 'sidecars';
   [key: string]: unknown;
 }
