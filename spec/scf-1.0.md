@@ -45,6 +45,21 @@ source/…             optional source-text files, referenced by a capture's sou
   JS, binaries and archives inside the bundle, any file no capture points to, and any file a capture *does*
   point to but that doesn't match its field's own shape rules — pointing `structure.file` at an `.html`/`.js`
   payload is not a way around the member allow-list (guarantee G6).
+- A bundle MUST NOT have more than 20,000 members, and MUST NOT declare more than 10,000 captures (`captures.length`,
+  or the sidecar-derived equivalent in sidecar mode) — two independent bundle-wide caps, bounding a bundle
+  regardless of how many members or captures it has, not just how large any one member is (`BUNDLE_TOO_MANY_MEMBERS`,
+  `BUNDLE_TOO_MANY_CAPTURES`). These exist alongside, not instead of, the per-image memory-bounding shapes below —
+  see ledger F32 → F60 → F69: a reader that bounds memory per-member can still be handed an unbounded *number* of
+  members, so a validator-enforced ceiling on both counts is the backstop that doesn't depend on any one reader's
+  own per-entry accounting.
+- An image MAY be measured, rather than read in full, by a reader that only ever has a bounded prefix of its real
+  bytes (never the whole file) — the package's exported `measureImage(prefixBytes)` combines magic-byte family
+  detection with a header-only dimension read into the one call this needs, working from whatever prefix is fed to
+  it (up to 64 KiB is enough for any realistic file, including a JPEG's SOF marker past a large embedded EXIF
+  thumbnail). The reader then discards the prefix and passes on only `{family, width, height}` plus the image's
+  real total size — no bytes retained at all. This exists because even the bounded `{head, size}` shape below
+  still retains a small image's *entire* content (ledger F69: an 8,000-image bundle of honest, individually-tiny
+  images could still add up to hundreds of MB of live memory with no aggregate cap of its own).
 - A reader MAY check a `structure/*.json` or `source/*` member's content incrementally — the instant its bytes
   are fully available, rather than holding the whole bundle in memory first — using the package's exported
   `checkStructureMember`/`checkSourceTextMember` functions, then discard the bytes once checked. This exists so
@@ -229,6 +244,8 @@ Errors fail the whole bundle (exit 1); warnings do not (exit 0).
 
 | Code | Severity | Meaning |
 |---|---|---|
+| `BUNDLE_TOO_MANY_MEMBERS` | error | The bundle has more than 20,000 members. Checked first, before anything else about the bundle. |
+| `BUNDLE_TOO_MANY_CAPTURES` | error | `captures.length` (or the sidecar-derived equivalent) is over 10,000. |
 | `SCF_JSON_MISSING` | error | No `scf.json` at the bundle root, and no legacy `metadata.json` to convert. |
 | `SCF_JSON_INVALID` | error | `scf.json` is not valid JSON, or not an object. |
 | `SCF_VERSION_UNSUPPORTED` | error | `scf` is missing, not a string, or not the current or previous minor version. |
