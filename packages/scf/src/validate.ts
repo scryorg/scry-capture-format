@@ -53,6 +53,18 @@ function issue(code: string, message: string, extra?: Partial<ValidationIssue>):
 
 /** Reads a directory recursively into a BundleFiles map. Node only — never imported by a Worker
  *  build, since callers only reach this path when `input` is a string (a filesystem path). */
+/**
+ * Ledger F27: every bundle path (members and paths a capture references) must be a plain relative
+ * POSIX path inside the bundle — no absolute paths, drive letters, backslashes, empty, `.` or `..`
+ * segments. Nothing writes raw paths to storage today (keys are hash-derived), but the validator is
+ * the shared G6/G7 gate, so it refuses them outright instead of relying on every consumer.
+ */
+export function isSafeRelPath(path: string): boolean {
+  if (path.length === 0 || path.length > 1024) return false;
+  if (path.startsWith('/') || path.includes('\\') || /^[A-Za-z]:/.test(path) || path.includes('\0')) return false;
+  return path.split('/').every((seg) => seg !== '' && seg !== '.' && seg !== '..');
+}
+
 async function readDir(dir: string): Promise<BundleFiles> {
   const fs = await import('node:fs/promises');
   const path = await import('node:path');
@@ -164,6 +176,14 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
   const errors: ValidationIssue[] = [];
   const warnings: ValidationIssue[] = [];
 
+  const unsafeMembers = [...files.keys()].filter((p) => !isSafeRelPath(p));
+  if (unsafeMembers.length > 0) {
+    for (const p of unsafeMembers) {
+      errors.push(issue('UNSAFE_PATH', `Bundle member has an unsafe path (absolute, backslash, "." or ".."): ${JSON.stringify(p)}`, { path: p }));
+    }
+    return { ok: false, errors, warnings, manifest: null };
+  }
+
   let manifest: ScfManifest;
   let isLegacy = false;
 
@@ -237,6 +257,8 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
     const image = typeof capture?.image === 'string' && capture.image.length > 0 ? capture.image : undefined;
     if (!image) {
       errors.push(issue('CAPTURE_IMAGE_MISSING', "Capture's image field is missing or empty.", { id }));
+    } else if (!isSafeRelPath(image)) {
+      errors.push(issue('UNSAFE_PATH', `Capture image path is unsafe (absolute, backslash, "." or ".."): ${JSON.stringify(image)}`, { id, path: image }));
     } else {
       referencedPaths.add(image);
       if (!files.has(image)) {
@@ -293,7 +315,7 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
       // scf-tree/1 document — otherwise it's a member-allow-list bypass (point it at an arbitrary
       // .html/.js payload). A path failing this is NOT added to referencedPaths, so if the file
       // exists at all it is also flagged FORBIDDEN_MEMBER.
-      const pathOk = structPath.startsWith('structure/') && extOf(structPath) === 'json';
+      const pathOk = isSafeRelPath(structPath) && structPath.startsWith('structure/') && extOf(structPath) === 'json';
       if (!pathOk) {
         errors.push(
           issue(
@@ -345,7 +367,7 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
       // Ledger F24: sourceText.file must live under source/, exist, be plausible UTF-8 text (never
       // a binary payload), and stay under the size cap. A path failing the prefix/extension check
       // is NOT added to referencedPaths (same reasoning as structure.file above).
-      const pathOk = sourcePath.startsWith('source/');
+      const pathOk = isSafeRelPath(sourcePath) && sourcePath.startsWith('source/');
       if (!pathOk) {
         errors.push(
           issue('SOURCE_TEXT_PATH_INVALID', `sourceText.file must be a path under source/: ${sourcePath}`, {

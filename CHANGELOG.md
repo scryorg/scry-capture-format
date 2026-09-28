@@ -5,6 +5,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [1.0.0] - 2026-09-28
 
+- Validator rejects unsafe bundle paths (absolute, backslash, drive letters, empty, `.` or `..` segments) for members and for every path a capture references: error `UNSAFE_PATH` (security review F27).
+
 Initial public release, promoted from the 2026-09-27 founder-reviewed draft
 (`scry-management/features/capture-sources/spec/scry-capture-format-v1-draft.md`).
 
