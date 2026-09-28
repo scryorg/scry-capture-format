@@ -56,6 +56,16 @@ Initial public release, promoted from the 2026-09-27 founder-reviewed draft
   limit is `IMAGE_DIMENSION_TOO_LARGE`; a header this parser can't read (truncated file, or an
   animated/exotic WebP shape) fails closed as `IMAGE_HEADER_UNREADABLE` rather than being silently accepted.
 
+- **Fixed (PR 0 review, ledger F19):** `fromSbcov()` treated sbcov's `storyId` field as though it never existed
+  and always derived `id` from `storyTitle` + `testName` — wrong: scry-sbcov's zip-generator has always written a
+  required, non-empty `storyId` on every `metadata.json` entry. Fixed: `id` = `storyId` (or the snake_case
+  `story_id`) whenever it's a non-empty string, falling back to the derived id only for bundles from sbcov
+  versions that predate the field, with a new `sbcov.id_derived` warning on the returned manifest naming how many
+  entries fell back. Also: `links.live` is now left absent (not `null`) in `fromSbcov()`'s output, matching the
+  spec's "Compatibility" wording that the converter itself doesn't know the build's Storybook URL. Two golden
+  fixtures now cover both metadata.json shapes (`legacy-sbcov-bundle` with `storyId`, `legacy-sbcov-bundle-no-storyid`
+  without it).
+
 ### Unchanged
 
 - Everything else keeps the structure and wording of the 2026-09-27 draft: the design rules, the manifest and

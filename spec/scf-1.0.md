@@ -259,7 +259,10 @@ Unknown fields, including unrecognised `x-<vendor>` keys, are never an error: th
 ## Compatibility
 
 - sbcov's current `metadata.json` + `sbcov-manifest.json` bundles stay accepted and are converted to SCF on ingest
-  (`id` = storyId, `code.file` = filepath, `capture` from the existing block, `links.live` from the build's Storybook).
+  (`id` = `storyId`/`story_id`, `code.file` = filepath, `capture` from the existing block; `links.live` is left
+  absent by the converter itself and filled in later from the build's Storybook view URL). `id` falls back to a
+  derived id from `storyTitle` + `testName` only for bundles from sbcov versions that predate `storyId`, and the
+  converter flags any such fallback with a `sbcov.id_derived` warning naming how many entries were affected.
 - Converters ship for Sentry-style PNG + JSON folders and Argos builds.
 
 ## What ships with the spec (this repo)

@@ -180,6 +180,11 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
       const metadataJson = parseJson(files, 'metadata.json');
       const manifestJson = files.has('sbcov-manifest.json') ? parseJson(files, 'sbcov-manifest.json') : undefined;
       manifest = fromSbcov(metadataJson, manifestJson);
+      // Surface converter-side warnings (e.g. sbcov.id_derived) through the same channel as every
+      // other warning, so `scf validate` on a legacy bundle prints them instead of dropping them.
+      if (Array.isArray(manifest.warnings)) {
+        warnings.push(...manifest.warnings);
+      }
     } catch (e) {
       errors.push(
         issue('SCF_JSON_INVALID', `Legacy metadata.json could not be converted: ${(e as Error).message}`, {

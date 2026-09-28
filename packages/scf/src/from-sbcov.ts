@@ -1,8 +1,16 @@
-import type { CaptureBlock, ScfCapture, ScfManifest, SkipReason } from './types.js';
+import type { CaptureBlock, ScfCapture, ScfManifest, SkipReason, ValidationIssue } from './types.js';
 
-/** A metadata.json entry as written by scry-sbcov's zip-generator (no `storyId` field). */
+/**
+ * A metadata.json entry as written by scry-sbcov's zip-generator (`MetadataEntry`,
+ * scry-sbcov src/core/zip-generator.ts:12-21). `storyId` has been a required, always-populated field
+ * on every entry since it was added (filled from `story.storyId` at zip-generator.ts:196-197) — an
+ * earlier note in this file (and ledger F19) said otherwise; that was wrong. It stays optional here,
+ * and `story_id` is accepted as an alternate spelling, only so bundles from sbcov versions that
+ * predate the field (or a hand-written/older converter) still convert instead of erroring.
+ */
 interface SbcovMetadataEntry {
   storyId?: string;
+  story_id?: string;
   filepath: string;
   componentFilePath?: string;
   componentName?: string;
@@ -60,11 +68,27 @@ export function toStorybookId(title: string, name: string): string {
   return leaf ? `${kind}--${leaf}` : kind;
 }
 
+/** A non-empty `storyId` (or `story_id`) string from an entry, else `undefined` — a present-but-blank
+ *  field counts as absent, the same as a missing one. */
+function realStoryId(entry: SbcovMetadataEntry): string | undefined {
+  for (const raw of [entry.storyId, entry.story_id]) {
+    if (typeof raw === 'string' && raw.length > 0) return raw;
+  }
+  return undefined;
+}
+
 /**
  * Converts a legacy sbcov `metadata.json` (+ optional `sbcov-manifest.json`) into an SCF 1.0
- * manifest, per spec/scf-1.0.md "Compatibility". `links.live` is left null here: sbcov's
- * metadata.json has no build URL, so the caller (build processing) fills it from the build's
- * Storybook view URL.
+ * manifest, per spec/scf-1.0.md "Compatibility". `links` (and so `links.live`) is left absent here:
+ * sbcov's metadata.json has no build URL, so the caller (build processing) fills `links.live` in from
+ * the build's Storybook view URL.
+ *
+ * `id` = `entry.storyId`/`entry.story_id` when it is a non-empty string (the normal case — sbcov has
+ * always written this). Only when it is absent (bundles from sbcov versions older than the field) does
+ * this fall back to deriving an id from `storyTitle` + `testName`, mirroring Storybook's own `toId` —
+ * the same derivation the dashboard's suggest feature already uses (search-api-client.ts:208-228). Any
+ * fallback is reported on the returned manifest as a `sbcov.id_derived` warning naming how many entries
+ * were affected, since a derived id is not guaranteed to survive a Storybook rename.
  */
 export function fromSbcov(metadataJson: unknown, manifestJson?: unknown): ScfManifest {
   const entries: SbcovMetadataEntry[] = Array.isArray(metadataJson)
@@ -74,8 +98,17 @@ export function fromSbcov(metadataJson: unknown, manifestJson?: unknown): ScfMan
   const manifest = manifestJson as SbcovManifest | undefined;
   const withRepo = entries.find((e) => e.repository);
 
+  let idDerivedCount = 0;
+
   const captures: ScfCapture[] = entries.map((entry) => {
-    const id = entry.storyId ?? toStorybookId(entry.storyTitle ?? '', entry.testName ?? '');
+    const storyId = realStoryId(entry);
+    let id: string;
+    if (storyId) {
+      id = storyId;
+    } else {
+      id = toStorybookId(entry.storyTitle ?? '', entry.testName ?? '');
+      idDerivedCount++;
+    }
     const capture: CaptureBlock | undefined = entry.capture
       ? {
           method: 'browser',
@@ -96,9 +129,8 @@ export function fromSbcov(metadataJson: unknown, manifestJson?: unknown): ScfMan
         line: entry.location?.startLine,
         componentFile: entry.componentFilePath || undefined,
       },
-      links: { live: null },
       tags: [],
-      'x-sbcov': { storyId: entry.storyId ?? null },
+      'x-sbcov': { storyId: storyId ?? null },
     };
     if (entry.storyTitle) capObj.title = entry.storyTitle.split('/');
     if (capture) capObj.capture = capture;
@@ -123,6 +155,16 @@ export function fromSbcov(metadataJson: unknown, manifestJson?: unknown): ScfMan
   };
   if (withRepo?.repository) {
     result.repository = { url: withRepo.repository, commit: withRepo.commitSha, branch: withRepo.branch };
+  }
+  if (idDerivedCount > 0) {
+    const warning: ValidationIssue = {
+      code: 'sbcov.id_derived',
+      message:
+        `${idDerivedCount} of ${captures.length} capture id(s) had no storyId (or story_id) in metadata.json ` +
+        'and were derived from storyTitle + testName instead. Derived ids are not guaranteed to survive a ' +
+        'Storybook rename; upgrade sbcov to a version that writes storyId to avoid this.',
+    };
+    result.warnings = [warning];
   }
   return result;
 }

@@ -149,6 +149,10 @@ export interface ScfManifest {
    *  SOURCE_TEXT_NOT_OPT_IN in the validator. */
   optIn?: { sourceText?: boolean };
   captures: ScfCapture[] | 'sidecars';
+  /** Producer-side warnings a converter (e.g. `fromSbcov`) attaches to its own output, on the same
+   *  `{code, message}` shape as `ValidationResult.warnings`. `validateBundle` merges these into its own
+   *  `warnings` when converting a legacy bundle, so they still surface via the CLI. */
+  warnings?: ValidationIssue[];
   [key: string]: unknown;
 }
 
