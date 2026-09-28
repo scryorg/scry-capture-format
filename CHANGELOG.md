@@ -5,6 +5,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [1.0.0] - 2026-09-28
 
+- `{head, size}` entries are accepted for images only; any other member given partially is rejected with `MEMBER_BYTES_REQUIRED`, and JSON, structure trees and source text are always read from full bytes (`bundleFileFull`) (security review F50).
+
 - Validator rejects unsafe bundle paths (absolute, backslash, drive letters, empty, `.` or `..` segments) for members and for every path a capture references: error `UNSAFE_PATH` (security review F27).
 - `BundleFiles` image entries may now be supplied as `{head, size}` instead of full bytes — the first bytes of
   the file (enough for magic-byte family detection and a header-only dimension read) plus the image's real

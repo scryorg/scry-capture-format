@@ -44,3 +44,56 @@ describe('bundle path safety (ledger F27)', () => {
     expect(result.errors[0].code).toBe('UNSAFE_PATH');
   });
 });
+
+describe('{head, size} entries are images only (ledger F50)', () => {
+  const partial = (bytes: Uint8Array, size: number) => ({ head: bytes, size });
+  const base = (captures: unknown[], extra: Record<string, unknown> = {}) => ({
+    scf: '1.0',
+    source: { kind: 'storybook', platform: 'web' },
+    captures,
+    ...extra,
+  });
+
+  it('rejects a partial scf.json', async () => {
+    const files: BundleFiles = new Map<string, any>([
+      ['scf.json', partial(enc(base([{ id: 'x', image: 'images/a.png' }])), 10_000_000)],
+      ['images/a.png', PIXEL_PNG],
+    ]);
+    const r = await validateBundle(files);
+    expect(r.ok).toBe(false);
+    expect(r.errors[0].code).toBe('MEMBER_BYTES_REQUIRED');
+  });
+
+  it('rejects a partial structure tree and a partial source text', async () => {
+    const tree = enc({ format: 'scf-tree/1', units: 'pt', root: { type: 'View' } });
+    const files: BundleFiles = new Map<string, any>([
+      ['scf.json', enc(base([{ id: 'x', image: 'images/a.png', structure: { file: 'structure/a.json', origin: 'dom', format: 'scf-tree/1' } }]))],
+      ['images/a.png', PIXEL_PNG],
+      ['structure/a.json', partial(tree, 50_000_000)],
+      ['source/a.txt', partial(new TextEncoder().encode('ok'), 50_000_000)],
+    ]);
+    const r = await validateBundle(files);
+    expect(r.ok).toBe(false);
+    expect(r.errors.map((e) => e.code)).toEqual(['MEMBER_BYTES_REQUIRED', 'MEMBER_BYTES_REQUIRED']);
+  });
+
+  it('a partial entry with an image extension used as sourceText is treated as missing, not validated from its head', async () => {
+    const files: BundleFiles = new Map<string, any>([
+      ['scf.json', enc(base([{ id: 'x', image: 'images/a.png', sourceText: { file: 'source/a.png' } }], { optIn: { sourceText: true } }))],
+      ['images/a.png', PIXEL_PNG],
+      ['source/a.png', partial(PIXEL_PNG, 50_000_000)],
+    ]);
+    const r = await validateBundle(files);
+    expect(r.ok).toBe(false);
+  });
+
+  it('still accepts a partial image', async () => {
+    const files: BundleFiles = new Map<string, any>([
+      ['scf.json', enc(base([{ id: 'x', image: 'images/a.png' }]))],
+      ['images/a.png', partial(PIXEL_PNG, 1234)],
+    ]);
+    const r = await validateBundle(files);
+    expect(r.errors).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+});

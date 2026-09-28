@@ -1,4 +1,4 @@
-import { bundleFileHead } from './types.js';
+import { bundleFileFull } from './types.js';
 import type { BundleFiles, ScfCapture } from './types.js';
 
 /**
@@ -11,7 +11,7 @@ export function sidecarCapturesFromImages(files: BundleFiles, imagePaths: string
   for (const imagePath of [...imagePaths].sort()) {
     const dot = imagePath.lastIndexOf('.');
     const stem = dot === -1 ? imagePath : imagePath.slice(0, dot);
-    const sidecarBytes = bundleFileHead(files.get(`${stem}.json`));
+    const sidecarBytes = bundleFileFull(files.get(`${stem}.json`));
     let sidecar: Partial<ScfCapture> = {};
     if (sidecarBytes) {
       try {
