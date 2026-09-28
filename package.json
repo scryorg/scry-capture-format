@@ -1,0 +1,16 @@
+{
+  "name": "scry-capture-format",
+  "private": true,
+  "description": "Scry Capture Format (SCF) — spec, JSON Schema, validator and conformance fixtures.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace packages/scf",
+    "typecheck": "npm run typecheck --workspace packages/scf",
+    "test": "npm run build && npm run test --workspace packages/scf"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}
