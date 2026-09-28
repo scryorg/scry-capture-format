@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scrymore.com/schemas/scf/1.0.json",
+  "title": "Scry Capture Format (SCF) 1.0 manifest",
+  "description": "scf.json — the manifest at the root of an SCF bundle. See spec/scf-1.0.md.",
+  "type": "object",
+  "required": ["scf", "source", "captures"],
+  "properties": {
+    "$schema": { "type": "string", "x-stability": "stable" },
+    "scf": {
+      "type": "string",
+      "const": "1.0",
+      "x-stability": "stable",
+      "description": "Spec version. Readers accept the current and previous minor version."
+    },
+    "source": {
+      "type": "object",
+      "x-stability": "stable",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "x-stability": "stable",
+          "description": "Registered values, or x-<name> for anything else.",
+          "anyOf": [
+            {
+              "enum": [
+                "storybook", "storybook-rn", "compose-preview", "swiftui-preview", "uikit",
+                "widgetbook", "flutter-golden", "playwright", "cypress", "maestro", "xcuitest",
+                "crawler", "figma", "argos", "percy", "docs", "upload"
+              ]
+            },
+            { "type": "string", "pattern": "^x-.+" }
+          ]
+        },
+        "platform": {
+          "type": "string",
+          "x-stability": "stable",
+          "enum": ["web", "ios", "android", "macos", "windows", "email", "other"]
+        },
+        "framework": { "type": "string", "x-stability": "stable" },
+        "tool": {
+          "type": "object",
+          "x-stability": "stable",
+          "properties": {
+            "name": { "type": "string" },
+            "version": { "type": "string" }
+          }
+        }
+      },
+      "patternProperties": {
+        "^x-.+": {}
+      },
+      "additionalProperties": true
+    },
+    "repository": {
+      "type": "object",
+      "x-stability": "stable",
+      "properties": {
+        "url": { "type": "string" },
+        "commit": { "type": "string" },
+        "branch": { "type": "string" }
+      }
+    },
+    "createdAt": { "type": "string", "format": "date-time", "x-stability": "stable" },
+    "defaults": {
+      "type": "object",
+      "x-stability": "stable",
+      "description": "Any capture field; applied to every capture that does not set it.",
+      "properties": {
+        "capture": { "$ref": "#/$defs/captureBlock" }
+      },
+      "additionalProperties": true
+    },
+    "counts": {
+      "type": "object",
+      "x-stability": "stable",
+      "properties": {
+        "declared": { "type": "integer", "minimum": 0, "x-stability": "stable" },
+        "captured": { "type": "integer", "minimum": 0, "x-stability": "stable" },
+        "skipped": {
+          "type": "array",
+          "x-stability": "stable",
+          "items": {
+            "type": "object",
+            "required": ["id", "reason"],
+            "properties": {
+              "id": { "type": "string" },
+              "reason": { "enum": ["error", "timeout", "filtered", "unsupported", "empty"] },
+              "detail": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "captures": {
+      "x-stability": "stable",
+      "oneOf": [
+        { "type": "array", "items": { "$ref": "#/$defs/capture" } },
+        { "type": "string", "const": "sidecars", "x-stability": "experimental" }
+      ]
+    }
+  },
+  "patternProperties": {
+    "^x-.+": {}
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "deviceRef": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "os": { "type": "string" }
+      }
+    },
+    "captureBlock": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "x-stability": "stable",
+          "enum": ["browser", "simulator", "emulator", "device", "jvm-render", "headless-render", "design-export", "manual"]
+        },
+        "device": { "$ref": "#/$defs/deviceRef", "x-stability": "stable" },
+        "viewport": {
+          "type": "object",
+          "x-stability": "stable",
+          "properties": {
+            "width": { "type": "number" },
+            "height": { "type": "number" }
+          }
+        },
+        "scale": { "type": "number", "exclusiveMinimum": 0, "x-stability": "stable" },
+        "size": {
+          "type": "object",
+          "x-stability": "stable",
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "crop": {
+          "type": "string",
+          "x-stability": "stable",
+          "enum": ["root", "viewport", "fullpage", "element", "none"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "capture": {
+      "type": "object",
+      "required": ["id", "image"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "x-stability": "stable",
+          "description": "Opaque; unique within the bundle. Adapters never sanitise ids."
+        },
+        "image": { "type": "string", "minLength": 1, "x-stability": "stable" },
+        "kind": {
+          "type": "string",
+          "x-stability": "stable",
+          "enum": ["component", "screen", "page", "flow-step", "region", "doc-image"],
+          "default": "component"
+        },
+        "title": {
+          "x-stability": "stable",
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "string" }
+          ]
+        },
+        "name": { "type": "string", "x-stability": "stable" },
+        "code": {
+          "type": "object",
+          "x-stability": "stable",
+          "properties": {
+            "file": { "type": "string" },
+            "line": { "type": "integer", "minimum": 1 },
+            "component": { "type": "string" },
+            "componentFile": { "type": "string" }
+          }
+        },
+        "variant": {
+          "type": "object",
+          "x-stability": "stable",
+          "properties": {
+            "theme": { "type": "string" },
+            "locale": { "type": "string" },
+            "fontScale": { "type": "number" },
+            "viewport": { "type": "object" },
+            "args": { "type": "object" }
+          },
+          "additionalProperties": true
+        },
+        "capture": { "$ref": "#/$defs/captureBlock", "x-stability": "stable" },
+        "links": {
+          "type": "object",
+          "properties": {
+            "live": { "type": ["string", "null"], "x-stability": "stable" },
+            "page": { "type": ["string", "null"], "x-stability": "stable" },
+            "figma": { "type": ["string", "null"], "x-stability": "experimental" }
+          }
+        },
+        "flow": {
+          "type": ["object", "null"],
+          "x-stability": "experimental",
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "step": { "type": "integer" },
+            "order": { "type": "integer" }
+          }
+        },
+        "structure": {
+          "type": ["object", "null"],
+          "x-stability": "experimental",
+          "properties": {
+            "file": { "type": "string" },
+            "origin": {
+              "enum": ["dom", "rn-fiber", "compose-semantics", "uiautomator", "xcui-accessibility", "flutter-widgets"]
+            },
+            "format": { "type": "string", "const": "scf-tree/1" }
+          },
+          "additionalProperties": true
+        },
+        "sourceText": {
+          "type": ["object", "null"],
+          "x-stability": "experimental",
+          "description": "Opt-in only. Adapters MUST NOT include this unless the user explicitly turns it on.",
+          "properties": {
+            "file": { "type": "string" },
+            "path": { "type": "string" }
+          }
+        },
+        "tags": {
+          "type": "array",
+          "x-stability": "stable",
+          "items": { "type": "string" }
+        }
+      },
+      "patternProperties": {
+        "^x-.+": {}
+      },
+      "additionalProperties": true
+    }
+  }
+}

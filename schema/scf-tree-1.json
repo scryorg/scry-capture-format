@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scrymore.com/schemas/scf/tree-1.json",
+  "title": "scf-tree/1 (experimental)",
+  "description": "A UI tree shaped like a design layer tree, referenced by a capture's structure.file. See spec/scf-1.0.md.",
+  "type": "object",
+  "x-stability": "experimental",
+  "required": ["format", "root"],
+  "properties": {
+    "format": { "type": "string", "const": "scf-tree/1" },
+    "units": { "type": "string", "enum": ["pt"], "default": "pt" },
+    "root": { "$ref": "#/$defs/node" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "bounds": {
+      "type": "object",
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "width": { "type": "number", "minimum": 0 },
+        "height": { "type": "number", "minimum": 0 }
+      }
+    },
+    "style": {
+      "type": "object",
+      "properties": {
+        "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$" },
+        "background": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$" },
+        "fontFamily": { "type": "string" },
+        "fontSize": { "type": "number" },
+        "fontWeight": { "type": "number" },
+        "lineHeight": { "type": "number" },
+        "letterSpacing": { "type": "number" },
+        "cornerRadius": { "type": "number" },
+        "borderWidth": { "type": "number" },
+        "borderColor": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$" },
+        "padding": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "type": "number" }
+        },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "shadow": { "type": "string" }
+      },
+      "patternProperties": { "^x-.+": {} },
+      "additionalProperties": false
+    },
+    "node": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string" },
+        "role": { "type": "string" },
+        "testId": { "type": "string" },
+        "text": { "type": "string" },
+        "bounds": { "$ref": "#/$defs/bounds" },
+        "style": { "$ref": "#/$defs/style" },
+        "sourceRef": {
+          "type": "object",
+          "properties": {
+            "file": { "type": "string" },
+            "line": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/node" }
+        }
+      },
+      "patternProperties": { "^x-.+": {} },
+      "additionalProperties": false
+    }
+  }
+}

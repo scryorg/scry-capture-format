@@ -1,0 +1,245 @@
+import { fromSbcov } from './from-sbcov.js';
+import { sidecarCapturesFromImages } from './sidecars-internal.js';
+import type { BundleFiles, ScfCapture, ScfManifest, ValidationIssue, ValidationResult } from './types.js';
+
+const SUPPORTED_SCF_VERSIONS = new Set(['1.0']);
+const ALLOWED_IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'webp']);
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+const MAX_STRUCTURE_BYTES = 2 * 1024 * 1024;
+
+const decoder = new TextDecoder();
+
+function extOf(path: string): string {
+  const m = /\.([a-zA-Z0-9]+)$/.exec(path);
+  return m ? m[1].toLowerCase() : '';
+}
+
+type ImageFamily = 'png' | 'jpeg' | 'webp';
+
+const EXT_FAMILY: Record<string, ImageFamily> = { png: 'png', jpg: 'jpeg', jpeg: 'jpeg', webp: 'webp' };
+
+/** Sniffs the magic bytes so a `.png` with the wrong content (or vice versa) is still caught. */
+function detectImageFamily(bytes: Uint8Array): ImageFamily | null {
+  if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+    return 'png';
+  }
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return 'jpeg';
+  }
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  ) {
+    return 'webp';
+  }
+  return null;
+}
+
+function issue(code: string, message: string, extra?: Partial<ValidationIssue>): ValidationIssue {
+  return { code, message, ...extra };
+}
+
+/** Reads a directory recursively into a BundleFiles map. Node only — never imported by a Worker
+ *  build, since callers only reach this path when `input` is a string (a filesystem path). */
+async function readDir(dir: string): Promise<BundleFiles> {
+  const fs = await import('node:fs/promises');
+  const path = await import('node:path');
+  const files: BundleFiles = new Map();
+
+  async function walk(current: string, rel: string): Promise<void> {
+    const entries = await fs.readdir(current, { withFileTypes: true });
+    for (const entry of entries) {
+      const abs = path.join(current, entry.name);
+      const relPath = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        await walk(abs, relPath);
+      } else if (entry.isFile()) {
+        const buf = await fs.readFile(abs);
+        files.set(relPath.split(path.sep).join('/'), new Uint8Array(buf));
+      }
+    }
+  }
+
+  await walk(dir, '');
+  return files;
+}
+
+function parseJson(files: BundleFiles, path: string): unknown {
+  return JSON.parse(decoder.decode(files.get(path)));
+}
+
+/**
+ * Validates an SCF bundle (or a legacy sbcov bundle, converted first) against spec/scf-1.0.md.
+ * `input` is either an in-memory bundle (a Map of bundle-relative POSIX path -> bytes — the shape
+ * a Worker or the upload service already has after reading a ZIP) or a directory path (Node only).
+ */
+export async function validateBundle(input: BundleFiles | string): Promise<ValidationResult> {
+  const files: BundleFiles = typeof input === 'string' ? await readDir(input) : input;
+  const errors: ValidationIssue[] = [];
+  const warnings: ValidationIssue[] = [];
+
+  let manifest: ScfManifest;
+  let isLegacy = false;
+
+  if (files.has('scf.json')) {
+    try {
+      manifest = parseJson(files, 'scf.json') as ScfManifest;
+    } catch {
+      errors.push(issue('SCF_JSON_INVALID', 'scf.json is not valid JSON.', { path: 'scf.json' }));
+      return { ok: false, errors, warnings, manifest: null };
+    }
+  } else if (files.has('metadata.json')) {
+    isLegacy = true;
+    try {
+      const metadataJson = parseJson(files, 'metadata.json');
+      const manifestJson = files.has('sbcov-manifest.json') ? parseJson(files, 'sbcov-manifest.json') : undefined;
+      manifest = fromSbcov(metadataJson, manifestJson);
+    } catch (e) {
+      errors.push(
+        issue('SCF_JSON_INVALID', `Legacy metadata.json could not be converted: ${(e as Error).message}`, {
+          path: 'metadata.json',
+        })
+      );
+      return { ok: false, errors, warnings, manifest: null };
+    }
+  } else {
+    errors.push(issue('SCF_JSON_MISSING', 'No scf.json at the bundle root, and no legacy metadata.json to convert.'));
+    return { ok: false, errors, warnings, manifest: null };
+  }
+
+  if (manifest === null || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    errors.push(issue('SCF_JSON_INVALID', 'scf.json must be a JSON object.', { path: 'scf.json' }));
+    return { ok: false, errors, warnings, manifest: null };
+  }
+
+  if (typeof manifest.scf !== 'string' || !SUPPORTED_SCF_VERSIONS.has(manifest.scf)) {
+    errors.push(issue('SCF_VERSION_UNSUPPORTED', `Unsupported scf version: ${JSON.stringify(manifest.scf)}.`));
+  }
+
+  const rawCaptures = manifest.captures;
+  const isSidecarMode = rawCaptures === 'sidecars';
+  let captures: ScfCapture[];
+
+  if (isSidecarMode) {
+    const imagePaths = [...files.keys()].filter((p) => p.startsWith('images/') && ALLOWED_IMAGE_EXT.has(extOf(p)));
+    captures = sidecarCapturesFromImages(files, imagePaths);
+  } else if (Array.isArray(rawCaptures)) {
+    captures = rawCaptures;
+  } else {
+    errors.push(issue('CAPTURES_MISSING', 'captures is missing, and not "sidecars" either.'));
+    captures = [];
+  }
+
+  const seenIds = new Map<string, number>();
+  const seenImages = new Map<string, string[]>();
+  const referencedPaths = new Set<string>(['scf.json']);
+
+  for (const capture of captures) {
+    const id = typeof capture?.id === 'string' ? capture.id : undefined;
+    if (!id || id.length > 512) {
+      errors.push(issue('CAPTURE_ID_INVALID', 'Capture id is missing, empty, or over 512 characters.', { id }));
+    } else {
+      seenIds.set(id, (seenIds.get(id) ?? 0) + 1);
+    }
+
+    const image = typeof capture?.image === 'string' && capture.image.length > 0 ? capture.image : undefined;
+    if (!image) {
+      errors.push(issue('CAPTURE_IMAGE_MISSING', "Capture's image field is missing or empty.", { id }));
+    } else {
+      referencedPaths.add(image);
+      if (!files.has(image)) {
+        errors.push(issue('IMAGE_FILE_MISSING', `Image file not found in bundle: ${image}`, { id, path: image }));
+      } else {
+        const ext = extOf(image);
+        const bytes = files.get(image);
+        const family = bytes ? detectImageFamily(bytes) : null;
+        if (!ALLOWED_IMAGE_EXT.has(ext) || !family || EXT_FAMILY[ext] !== family) {
+          errors.push(issue('IMAGE_FORMAT_INVALID', `Image is not PNG/JPEG/WebP: ${image}`, { id, path: image }));
+        }
+        if ((bytes?.byteLength ?? 0) > MAX_IMAGE_BYTES) {
+          errors.push(issue('IMAGE_TOO_LARGE', `Image is over 20 MB: ${image}`, { id, path: image }));
+        }
+      }
+      const list = seenImages.get(image) ?? [];
+      list.push(id ?? '(no id)');
+      seenImages.set(image, list);
+    }
+
+    const scale = capture?.capture?.scale;
+    if (scale !== undefined && (typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0)) {
+      errors.push(
+        issue('INVALID_SCALE', `capture.scale must be a positive finite number: ${JSON.stringify(scale)}`, { id })
+      );
+    }
+
+    const structure = capture?.structure;
+    if (structure && typeof structure === 'object' && typeof structure.file === 'string') {
+      referencedPaths.add(structure.file);
+      const structBytes = files.get(structure.file);
+      if (!structBytes) {
+        errors.push(
+          issue('IMAGE_FILE_MISSING', `structure.file not found in bundle: ${structure.file}`, {
+            id,
+            path: structure.file,
+          })
+        );
+      } else if (structBytes.byteLength > MAX_STRUCTURE_BYTES) {
+        warnings.push(
+          issue('STRUCTURE_TREE_LARGE', `structure file is over 2 MB: ${structure.file}`, { id, path: structure.file })
+        );
+      }
+    }
+
+    const sourceText = capture?.sourceText;
+    if (sourceText && typeof sourceText === 'object' && typeof sourceText.file === 'string') {
+      referencedPaths.add(sourceText.file);
+    }
+  }
+
+  for (const [id, count] of seenIds) {
+    if (count > 1) {
+      errors.push(issue('DUPLICATE_ID', `Duplicate capture id (${count}×): ${id}`, { id }));
+    }
+  }
+  for (const [image, ids] of seenImages) {
+    if (ids.length > 1) {
+      errors.push(
+        issue('SHARED_IMAGE', `Image shared by ${ids.length} captures: ${image} (${ids.join(', ')})`, { path: image })
+      );
+    }
+  }
+
+  if (isSidecarMode) {
+    for (const path of files.keys()) {
+      if (path.startsWith('images/') && path.endsWith('.json')) referencedPaths.add(path);
+    }
+  }
+
+  if (!isLegacy) {
+    for (const path of files.keys()) {
+      if (referencedPaths.has(path)) continue;
+      errors.push(issue('FORBIDDEN_MEMBER', `Bundle member is not referenced by any capture: ${path}`, { path }));
+    }
+  }
+
+  const counts = manifest.counts;
+  if (counts && typeof counts.captured === 'number' && !isSidecarMode) {
+    if (counts.captured !== captures.length) {
+      errors.push(
+        issue(
+          'COUNTS_MISMATCH',
+          `counts.captured (${counts.captured}) does not equal captures.length (${captures.length}).`
+        )
+      );
+    }
+  }
+
+  return { ok: errors.length === 0, errors, warnings, manifest };
+}

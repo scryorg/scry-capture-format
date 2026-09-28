@@ -1,0 +1,21 @@
+{
+  "build": { "id": "b_9f2a", "name": "main", "number": 42 },
+  "screenshots": [
+    {
+      "id": "s_1",
+      "name": "components/button/primary",
+      "url": "https://media.argos-ci.com/acme/kettle/button-primary.png",
+      "width": 400,
+      "height": 120,
+      "viewport": { "width": 1280, "height": 800 }
+    },
+    {
+      "id": "s_2",
+      "name": "components/button/secondary",
+      "url": "https://media.argos-ci.com/acme/kettle/button-secondary.png",
+      "width": 400,
+      "height": 120,
+      "viewport": { "width": 1280, "height": 800 }
+    }
+  ]
+}
