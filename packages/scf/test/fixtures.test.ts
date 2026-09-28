@@ -64,6 +64,10 @@ describe('conformance fixtures: invalid', () => {
       'forbidden-member',
       'counts-mismatch',
       'bad-scale',
+      'unsafe-link-javascript',
+      'unsafe-link-data',
+      'unsafe-link-http',
+      'unsafe-link-userinfo',
     ]) {
       expect(invalidNames).toContain(required);
     }

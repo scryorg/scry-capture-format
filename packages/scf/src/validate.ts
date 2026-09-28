@@ -6,6 +6,7 @@ const SUPPORTED_SCF_VERSIONS = new Set(['1.0']);
 const ALLOWED_IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'webp']);
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_STRUCTURE_BYTES = 2 * 1024 * 1024;
+const MAX_LINK_URL_LENGTH = 2048;
 
 const decoder = new TextDecoder();
 
@@ -73,6 +74,29 @@ async function readDir(dir: string): Promise<BundleFiles> {
 
 function parseJson(files: BundleFiles, path: string): unknown {
   return JSON.parse(decoder.decode(files.get(path)));
+}
+
+/**
+ * `links.live` is auto-embedded as an iframe wherever Storybook is embedded today (contract §8);
+ * `links.page` is rendered as a clickable link. Both are adapter-controlled (any CI job holding the
+ * project's API key, on every capture) — a much wider surface than today's single admin-configured
+ * Storybook URL. Security review finding #1 / ledger F18: reject anything that isn't an absolute
+ * `https:` URL with no embedded credentials, so a malicious or compromised adapter can't set
+ * `javascript:`, `data:`, plain `http:`, or a userinfo-bearing URL. This does not by itself make
+ * embedding *safe* — see spec/scf-1.0.md's `links.live` row: a reader MUST NOT actually embed it
+ * unless its origin is one already trusted for that project.
+ */
+function checkLinkIsSafeHttps(url: string): boolean {
+  if (url.length > MAX_LINK_URL_LENGTH) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'https:') return false;
+  if (parsed.username !== '' || parsed.password !== '') return false;
+  return true;
 }
 
 /**
@@ -200,6 +224,23 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
     const sourceText = capture?.sourceText;
     if (sourceText && typeof sourceText === 'object' && typeof sourceText.file === 'string') {
       referencedPaths.add(sourceText.file);
+    }
+
+    const live = capture?.links?.live;
+    if (live !== undefined && live !== null && !checkLinkIsSafeHttps(live)) {
+      errors.push(
+        issue('links.live.not_https', `links.live must be an absolute https: URL with no credentials: ${live}`, {
+          id,
+        })
+      );
+    }
+    const page = capture?.links?.page;
+    if (page !== undefined && page !== null && !checkLinkIsSafeHttps(page)) {
+      errors.push(
+        issue('links.page.not_https', `links.page must be an absolute https: URL with no credentials: ${page}`, {
+          id,
+        })
+      );
     }
   }
 

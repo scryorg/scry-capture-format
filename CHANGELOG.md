@@ -27,6 +27,15 @@ Initial public release, promoted from the 2026-09-27 founder-reviewed draft
   `@scrymore/scf` package agree on one vocabulary (used by conformance fixtures' `expected.json`).
 - An explicit relationship note: `counts.declared` SHOULD equal `counts.captured + counts.skipped.length` when all
   three are present.
+- **Security (review finding #1, ledger F18):** `links.live` and `links.page` are adapter-controlled URLs
+  set on every capture by any CI job holding the project's API key — a far wider surface than today's single
+  admin-configured Storybook URL, and `links.live` is auto-embedded as an iframe wherever Storybook is
+  embedded today. The validator now rejects either field unless it is an absolute `https:` URL with no
+  userinfo/credentials and at most 2048 characters (`links.live.not_https` / `links.page.not_https`), with
+  fixtures for `javascript:`, `data:`, plain `http:`, and `https://user:pw@…`. `links.live`'s spec row is
+  revised accordingly: a reader MUST NOT embed it unless its origin is one already trusted for that project.
+  This closes the PR 0 portion of F18; PR 5 (dashboard) and PR 8 (scry-link) still need to reuse the existing
+  sandboxed embed component and check the URL's origin before treating it as trusted.
 
 ### Unchanged
 

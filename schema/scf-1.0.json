@@ -199,8 +199,20 @@
         "links": {
           "type": "object",
           "properties": {
-            "live": { "type": ["string", "null"], "x-stability": "stable" },
-            "page": { "type": ["string", "null"], "x-stability": "stable" },
+            "live": {
+              "type": ["string", "null"],
+              "x-stability": "stable",
+              "maxLength": 2048,
+              "pattern": "^https://[^@]*$",
+              "description": "Absolute https: URL, no userinfo/credentials (enforced fully by the validator, not just this pattern: see spec 'Validator error and warning codes', links.live.not_https)."
+            },
+            "page": {
+              "type": ["string", "null"],
+              "x-stability": "stable",
+              "maxLength": 2048,
+              "pattern": "^https://[^@]*$",
+              "description": "Absolute https: URL, no userinfo/credentials (see links.page.not_https)."
+            },
             "figma": { "type": ["string", "null"], "x-stability": "experimental" }
           }
         },

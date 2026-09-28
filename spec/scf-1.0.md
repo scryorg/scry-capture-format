@@ -145,8 +145,8 @@ sidecar mode.
 | `capture.scale` | SHOULD | Image pixels per CSS px / point (1, 2, 2.625, 3). Scry uses it to line captures up with Figma. |
 | `capture.size` | MAY | Image size in pixels; Scry checks it against the file. |
 | `capture.crop` | MAY | `root` (cropped to the component), `viewport`, `fullpage`, `element`, `none`. |
-| `links.live` | MAY | A URL that renders this capture live (a Storybook iframe URL). When present, Scry embeds it; when absent, Scry shows the image. |
-| `links.page` | MAY | The product URL the capture was taken from (crawler, E2E). |
+| `links.live` | MAY | An absolute `https:` URL that renders this capture live (a Storybook iframe URL). Readers MUST NOT embed it unless its origin is one they already trust for that project; otherwise they link to it. Scry embeds it only from the project's own Storybook origin and shows the image otherwise. |
+| `links.page` | MAY | The product URL the capture was taken from (crawler, E2E). MUST be an absolute `https:` URL; Scry links to it, never embeds it automatically. |
 | `links.figma` | MAY | A Figma node URL this capture is meant to match. Scry proposes it as a link. |
 | `flow` | MAY | `{id, name, step, order}` for captures that belong to a user flow. |
 | `structure` | MAY | *Experimental.* A UI tree for this capture, as a JSON file in the bundle: `{file, origin, format}`. `origin` says where it came from: `dom`, `rn-fiber`, `compose-semantics`, `uiautomator`, `xcui-accessibility`, `flutter-widgets`, or `x-<name>`. `format` is `scf-tree/1` (below). |
@@ -233,6 +233,8 @@ Errors fail the whole bundle (exit 1); warnings do not (exit 0).
 | `COUNTS_MISMATCH` | error | `counts.captured` is present and does not equal `captures.length`. |
 | `INVALID_SCALE` | error | `capture.scale` is present and not a finite number greater than 0. |
 | `STRUCTURE_TREE_LARGE` | warning | A referenced `structure` file is over 2 MB. |
+| `links.live.not_https` | error | `links.live` is present and is not an absolute `https:` URL, contains userinfo/credentials, or is over 2048 chars. |
+| `links.page.not_https` | error | Same check as above, for `links.page`. |
 | `ID_CHURN` | warning | More than 20% of a source's ids are new versus its previous build (upload-time only; not a bundle-shape check). |
 
 Unknown fields, including unrecognised `x-<vendor>` keys, are never an error: they are preserved and ignored.

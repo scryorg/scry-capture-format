@@ -73,6 +73,9 @@ optional structure/source-text files referenced from a capture, or JSON sidecars
       it's fine to leave out entirely.
 - [ ] `sourceText` is empty/absent unless the user explicitly opted in, and your adapter prints a notice
       when it is included.
+- [ ] `links.live` and `links.page`, if you set them, are absolute `https:` URLs with no
+      username/password in them (`https://user:pw@host/...` is rejected) — Scry may embed
+      `links.live` as an iframe, so this isn't optional hardening.
 - [ ] `npx @scrymore/scf validate <output-dir>` exits 0 with no errors.
 - [ ] The bundle contains nothing but `scf.json`, images, and (if used) `structure/`, `source/`, or sidecar
       JSON files. No `.html`, `.js`, or archives — even a test fixture or a log file will be rejected.
