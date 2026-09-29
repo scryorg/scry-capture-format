@@ -5,6 +5,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+- **Validator enforces the schema's enums (ledger F125, G7):** `validateBundle` accepted manifests the published
+  `schema/scf-1.0.json` rejects (e.g. `capture.method: "playwright-chromium"`, `capture.crop: "bogus"`). It now
+  rejects every schema enum/const (`source.kind`, `source.platform`, `capture.method`, `capture.crop` incl.
+  `defaults.capture`, `kind`, `structure.origin`, `structure.format`, `counts.skipped[].reason`) with the new code
+  `ENUM_VALUE_INVALID`. Ten new invalid fixtures, and `test/schema-parity.test.ts` runs every fixture through both ajv
+  and the validator.
+
 - **Security (review finding F69, ledger F69 — third recurrence of F32/F60's root cause):** F60's fix
   covered `structure/*.json`/`source/*` members, but left the IMAGE category exposed to the same
   problem: the existing `{head, size}` shape (F31/F32/F50) still retains an image's ENTIRE content

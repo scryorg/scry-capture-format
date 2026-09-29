@@ -51,6 +51,88 @@ function issue(code: string, message: string, extra?: Partial<ValidationIssue>):
   return { code, message, ...extra };
 }
 
+/** Ledger F125: every enum/const the published schema/scf-1.0.json enforces. The validator MUST
+ *  reject exactly what the schema rejects (G7: schema, CLI and server agree). Keep in lockstep with
+ *  the schema; test/schema-parity.test.ts runs every fixture through both and asserts they agree. */
+const SOURCE_KINDS = new Set([
+  'storybook', 'storybook-rn', 'compose-preview', 'swiftui-preview', 'uikit', 'widgetbook', 'flutter-golden',
+  'playwright', 'cypress', 'maestro', 'xcuitest', 'crawler', 'figma', 'argos', 'percy', 'docs', 'upload',
+]);
+const SOURCE_PLATFORMS = new Set(['web', 'ios', 'android', 'macos', 'windows', 'email', 'other']);
+const CAPTURE_METHODS = new Set([
+  'browser', 'simulator', 'emulator', 'device', 'jvm-render', 'headless-render', 'design-export', 'manual',
+]);
+const CAPTURE_CROPS = new Set(['root', 'viewport', 'fullpage', 'element', 'none']);
+const CAPTURE_KINDS = new Set(['component', 'screen', 'page', 'flow-step', 'region', 'doc-image']);
+const STRUCTURE_ORIGINS = new Set([
+  'dom', 'rn-fiber', 'compose-semantics', 'uiautomator', 'xcui-accessibility', 'flutter-widgets',
+]);
+const SKIP_REASONS = new Set(['error', 'timeout', 'filtered', 'unsupported', 'empty']);
+
+function enumIssue(field: string, value: unknown, allowed: Iterable<string>, id?: string): ValidationIssue {
+  return issue(
+    'ENUM_VALUE_INVALID',
+    `${field} must be one of ${[...allowed].join(', ')}: ${JSON.stringify(value)}`,
+    { id }
+  );
+}
+
+/** Pushes ENUM_VALUE_INVALID when `value` is present (not undefined) and not in `allowed`. `null` is
+ *  present and off-enum, matching JSON Schema. */
+function checkEnum(errors: ValidationIssue[], field: string, value: unknown, allowed: Set<string>, id?: string): void {
+  if (value === undefined) return;
+  if (typeof value !== 'string' || !allowed.has(value)) errors.push(enumIssue(field, value, allowed, id));
+}
+
+function checkCaptureBlockEnums(errors: ValidationIssue[], prefix: string, block: unknown, id?: string): void {
+  if (block === null || typeof block !== 'object' || Array.isArray(block)) return;
+  const b = block as Record<string, unknown>;
+  checkEnum(errors, `${prefix}.method`, b.method, CAPTURE_METHODS, id);
+  checkEnum(errors, `${prefix}.crop`, b.crop, CAPTURE_CROPS, id);
+}
+
+function checkManifestEnums(errors: ValidationIssue[], manifest: Record<string, unknown>): void {
+  const source = manifest.source;
+  if (source !== null && typeof source === 'object' && !Array.isArray(source)) {
+    const src = source as Record<string, unknown>;
+    const kind = src.kind;
+    if (kind !== undefined && (typeof kind !== 'string' || !(SOURCE_KINDS.has(kind) || /^x-./.test(kind)))) {
+      errors.push(
+        issue(
+          'ENUM_VALUE_INVALID',
+          `source.kind must be one of ${[...SOURCE_KINDS].join(', ')} or an x-<name> value: ${JSON.stringify(kind)}`
+        )
+      );
+    }
+    checkEnum(errors, 'source.platform', src.platform, SOURCE_PLATFORMS);
+  }
+  const defaults = manifest.defaults;
+  if (defaults !== null && typeof defaults === 'object' && !Array.isArray(defaults)) {
+    checkCaptureBlockEnums(errors, 'defaults.capture', (defaults as Record<string, unknown>).capture);
+  }
+  const skipped = (manifest.counts as { skipped?: unknown } | null | undefined)?.skipped;
+  if (Array.isArray(skipped)) {
+    for (const item of skipped) {
+      if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
+        checkEnum(errors, 'counts.skipped[].reason', (item as Record<string, unknown>).reason, SKIP_REASONS);
+      }
+    }
+  }
+}
+
+function checkCaptureEnums(errors: ValidationIssue[], capture: unknown, id?: string): void {
+  if (capture === null || typeof capture !== 'object') return;
+  const c = capture as Record<string, unknown>;
+  checkEnum(errors, 'kind', c.kind, CAPTURE_KINDS, id);
+  checkCaptureBlockEnums(errors, 'capture', c.capture, id);
+  const structure = c.structure;
+  if (structure !== null && typeof structure === 'object' && !Array.isArray(structure)) {
+    const st = structure as Record<string, unknown>;
+    checkEnum(errors, 'structure.origin', st.origin, STRUCTURE_ORIGINS, id);
+    checkEnum(errors, 'structure.format', st.format, new Set(['scf-tree/1']), id);
+  }
+}
+
 /** Reads a directory recursively into a BundleFiles map. Node only — never imported by a Worker
  *  build, since callers only reach this path when `input` is a string (a filesystem path). */
 /**
@@ -338,6 +420,8 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
     errors.push(issue('SCF_VERSION_UNSUPPORTED', `Unsupported scf version: ${JSON.stringify(manifest.scf)}.`));
   }
 
+  checkManifestEnums(errors, manifest as unknown as Record<string, unknown>);
+
   const rawCaptures = manifest.captures;
   const isSidecarMode = rawCaptures === 'sidecars';
   let captures: ScfCapture[];
@@ -370,6 +454,7 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
 
   for (const capture of captures) {
     const id = typeof capture?.id === 'string' ? capture.id : undefined;
+    checkCaptureEnums(errors, capture, id);
     if (!id || id.length > 512) {
       errors.push(issue('CAPTURE_ID_INVALID', 'Capture id is missing, empty, or over 512 characters.', { id }));
     } else {

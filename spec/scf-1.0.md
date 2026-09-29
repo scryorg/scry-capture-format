@@ -262,6 +262,7 @@ Errors fail the whole bundle (exit 1); warnings do not (exit 0).
 | `FORBIDDEN_MEMBER` | error | A bundle member is not `scf.json`, an image, a referenced (and validly-shaped) `structure`/`sourceText` file, or a sidecar `*.json`. |
 | `COUNTS_MISMATCH` | error | `counts.captured` is present and does not equal `captures.length`. |
 | `INVALID_SCALE` | error | `capture.scale` is present and not a finite number greater than 0. |
+| `ENUM_VALUE_INVALID` | error | A field the schema restricts to a fixed set has an off-set value: `source.kind` (registered or `x-<name>`), `source.platform`, `capture.method`, `capture.crop` (per capture and under `defaults.capture`), `kind`, `structure.origin`, `structure.format`, `counts.skipped[].reason`. The validator enforces every enum in `schema/scf-1.0.json`. |
 | `STRUCTURE_PATH_INVALID` | error | `structure.file` is not a `.json` path under `structure/`. |
 | `STRUCTURE_FILE_MISSING` | error | `structure.file` does not exist in the bundle. |
 | `STRUCTURE_FORMAT_INVALID` | error | `structure.file` exists but doesn't parse as a `scf-tree/1` document (bad JSON, wrong `format`, or no `root.type`). |
