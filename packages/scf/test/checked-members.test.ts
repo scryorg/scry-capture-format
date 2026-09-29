@@ -99,7 +99,7 @@ describe('isCheckedBundleFile', () => {
 
 describe('validateBundle: {checked, size} entries for structure/source members (ledger F60)', () => {
   it('accepts a structure/*.json member supplied as {checked: true, size} and referenced by a capture', async () => {
-    const files: BundleFiles = new Map<string, any>([
+    const files: BundleFiles = new Map([
       [
         'scf.json',
         enc(base([{ id: 'x', image: 'images/a.png', structure: { file: 'structure/a.json', origin: 'dom', format: 'scf-tree/1' } }])),
@@ -113,7 +113,7 @@ describe('validateBundle: {checked, size} entries for structure/source members (
   });
 
   it('accepts a source/* member supplied as {checked: true, size} and referenced by a capture, opted in', async () => {
-    const files: BundleFiles = new Map<string, any>([
+    const files: BundleFiles = new Map([
       [
         'scf.json',
         enc(base([{ id: 'x', image: 'images/a.png', sourceText: { file: 'source/a.ts' } }], { optIn: { sourceText: true } })),
@@ -127,7 +127,7 @@ describe('validateBundle: {checked, size} entries for structure/source members (
   });
 
   it('still runs the aggregate opt-in cross-check when the sourceText member is {checked, size}', async () => {
-    const files: BundleFiles = new Map<string, any>([
+    const files: BundleFiles = new Map([
       ['scf.json', enc(base([{ id: 'x', image: 'images/a.png', sourceText: { file: 'source/a.ts' } }]))], // no optIn.sourceText
       ['images/a.png', PIXEL_PNG],
       ['source/a.ts', { checked: true, size: 900_000 }],
@@ -137,19 +137,26 @@ describe('validateBundle: {checked, size} entries for structure/source members (
     expect(result.errors.map((e) => e.code)).toContain('SOURCE_TEXT_NOT_OPT_IN');
   });
 
-  it('still flags an unreferenced {checked, size} structure member as FORBIDDEN_MEMBER (referenced-by-a-capture cross-check)', async () => {
-    const files: BundleFiles = new Map<string, any>([
+  it.each([
+    // Unreferenced structure member: the referenced-by-a-capture cross-check still fires.
+    { path: 'structure/orphan.json', size: 12_345, code: 'FORBIDDEN_MEMBER' },
+    // Plain JSON member outside structure/source (e.g. a sidecar): {checked, size} isn't allowed there.
+    { path: 'images/a.json', size: 500, code: 'MEMBER_BYTES_REQUIRED' },
+    // structure/ member that is not .json: still MEMBER_BYTES_REQUIRED, not silently allowed.
+    { path: 'structure/notes.txt', size: 500, code: 'MEMBER_BYTES_REQUIRED' },
+  ])('still flags {checked, size} for $path as $code', async ({ path, size, code }) => {
+    const files: BundleFiles = new Map([
       ['scf.json', enc(base([{ id: 'x', image: 'images/a.png' }]))],
       ['images/a.png', PIXEL_PNG],
-      ['structure/orphan.json', { checked: true, size: 12345 }],
+      [path, { checked: true, size }],
     ]);
     const result = await validateBundle(files);
     expect(result.ok).toBe(false);
-    expect(result.errors.map((e) => e.code)).toContain('FORBIDDEN_MEMBER');
+    expect(result.errors.map((e) => e.code)).toContain(code);
   });
 
   it('still reports STRUCTURE_FILE_MISSING when the referenced path is absent altogether (not just uncheckable)', async () => {
-    const files: BundleFiles = new Map<string, any>([
+    const files: BundleFiles = new Map([
       [
         'scf.json',
         enc(base([{ id: 'x', image: 'images/a.png', structure: { file: 'structure/missing.json', format: 'scf-tree/1' } }])),
@@ -162,7 +169,7 @@ describe('validateBundle: {checked, size} entries for structure/source members (
   });
 
   it('rejects {checked, size} for scf.json — the shape is restricted to structure/*.json and source/*', async () => {
-    const files: BundleFiles = new Map<string, any>([
+    const files: BundleFiles = new Map([
       ['scf.json', { checked: true, size: 500 }],
       ['images/a.png', PIXEL_PNG],
     ]);
@@ -171,30 +178,11 @@ describe('validateBundle: {checked, size} entries for structure/source members (
     expect(result.errors.map((e) => e.code)).toEqual(['MEMBER_BYTES_REQUIRED']);
   });
 
-  it('rejects {checked, size} for a plain JSON member outside structure/source (e.g. a sidecar)', async () => {
-    const files: BundleFiles = new Map<string, any>([
-      ['scf.json', enc(base([{ id: 'x', image: 'images/a.png' }]))],
-      ['images/a.png', PIXEL_PNG],
-      ['images/a.json', { checked: true, size: 500 }],
-    ]);
-    const result = await validateBundle(files);
-    expect(result.ok).toBe(false);
-    expect(result.errors.map((e) => e.code)).toContain('MEMBER_BYTES_REQUIRED');
-  });
-
-  it('rejects {checked, size} for a structure/ member that is not .json (still MEMBER_BYTES_REQUIRED, not silently allowed)', async () => {
-    const files: BundleFiles = new Map<string, any>([
-      ['scf.json', enc(base([{ id: 'x', image: 'images/a.png' }]))],
-      ['images/a.png', PIXEL_PNG],
-      ['structure/notes.txt', { checked: true, size: 500 }],
-    ]);
-    const result = await validateBundle(files);
-    expect(result.ok).toBe(false);
-    expect(result.errors.map((e) => e.code)).toContain('MEMBER_BYTES_REQUIRED');
-  });
+  // 'a plain JSON member outside structure/source (e.g. a sidecar)' and 'a structure/ member that is
+  // not .json' are covered by the parameterized 'still flags {checked, size} for $path as $code' case above.
 
   it('rejects {checked, size} for an image — the images-only {head, size} shape is unchanged (F50 still holds)', async () => {
-    const files: BundleFiles = new Map<string, any>([
+    const files: BundleFiles = new Map([
       ['scf.json', enc(base([{ id: 'x', image: 'images/a.png' }]))],
       ['images/a.png', { checked: true, size: 500 }],
     ]);

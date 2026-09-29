@@ -241,6 +241,11 @@ export function checkSourceTextMember(path: string, bytes: Uint8Array, optedIn: 
  * `input` is either an in-memory bundle (a Map of bundle-relative POSIX path -> bytes — the shape
  * a Worker or the upload service already has after reading a ZIP) or a directory path (Node only).
  */
+// This is the package's single security-sensitive "shared gate" (contract guarantee G7; security-review
+// ledger F18/F24/F25/F27/F50/F60/F69 all depend on its exact error set/order); decomposing it to reach the
+// 15-point cognitive-complexity limit is a genuine behavior-risk rewrite, not an economical fix — tracked
+// as pre-existing debt (F13 Sonar-lint pass) rather than attempted here.
+// eslint-disable-next-line sonarjs/cognitive-complexity -- 187 vs 15; full decomposition deferred, see above
 export async function validateBundle(input: BundleFiles | string): Promise<ValidationResult> {
   const files: BundleFiles = typeof input === 'string' ? await readDir(input) : input;
   const errors: ValidationIssue[] = [];

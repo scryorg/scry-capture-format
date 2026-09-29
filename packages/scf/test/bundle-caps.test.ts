@@ -19,7 +19,7 @@ describe('bundle-wide entry-count caps (ledger F69)', () => {
     // are expected and irrelevant here, and unreferenced images keep this independent of the capture
     // cap. Uses {measured} entries so this test itself stays fast and light: proving the cap is about
     // count, not about real bytes.
-    const files: BundleFiles = new Map<string, any>();
+    const files: BundleFiles = new Map();
     for (let i = 0; i < 19_999; i++) {
       files.set(`images/${i}.png`, { measured: true, family: 'png', width: 1, height: 1, size: 100 });
     }
@@ -30,7 +30,7 @@ describe('bundle-wide entry-count caps (ledger F69)', () => {
   });
 
   it('rejects BUNDLE_TOO_MANY_MEMBERS over the 20,000-member cap, without processing anything else', async () => {
-    const files: BundleFiles = new Map<string, any>();
+    const files: BundleFiles = new Map();
     for (let i = 0; i < 20_001; i++) {
       files.set(`images/${i}.png`, { measured: true, family: 'png', width: 1, height: 1, size: 100 });
     }
@@ -43,7 +43,7 @@ describe('bundle-wide entry-count caps (ledger F69)', () => {
 
   it('rejects BUNDLE_TOO_MANY_CAPTURES over the 10,000-capture cap', async () => {
     const captures = Array.from({ length: 10_001 }, (_, i) => ({ id: `x${i}`, image: 'images/a.png' }));
-    const files: BundleFiles = new Map<string, any>([
+    const files: BundleFiles = new Map([
       ['scf.json', enc({ scf: '1.0', source: { kind: 'storybook', platform: 'web' }, captures })],
       ['images/a.png', { measured: true, family: 'png', width: 1, height: 1, size: 100 }],
     ]);
@@ -54,7 +54,7 @@ describe('bundle-wide entry-count caps (ledger F69)', () => {
 
   it('accepts exactly 10,000 captures (at the cap, not over it)', async () => {
     const captures = Array.from({ length: 10_000 }, (_, i) => ({ id: `x${i}`, image: 'images/a.png' }));
-    const files: BundleFiles = new Map<string, any>([
+    const files: BundleFiles = new Map([
       [
         'scf.json',
         enc({
