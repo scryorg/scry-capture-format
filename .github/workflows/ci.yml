@@ -22,6 +22,8 @@ jobs:
 
       - run: npm run typecheck --workspace packages/scf
 
+      - run: npm run lint
+
       - run: npm run build --workspace packages/scf
 
       - run: npm run test --workspace packages/scf

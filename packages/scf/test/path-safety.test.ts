@@ -55,7 +55,7 @@ describe('{head, size} entries are images only (ledger F50)', () => {
   });
 
   it('rejects a partial scf.json', async () => {
-    const files: BundleFiles = new Map<string, any>([
+    const files: BundleFiles = new Map([
       ['scf.json', partial(enc(base([{ id: 'x', image: 'images/a.png' }])), 10_000_000)],
       ['images/a.png', PIXEL_PNG],
     ]);
@@ -66,7 +66,7 @@ describe('{head, size} entries are images only (ledger F50)', () => {
 
   it('rejects a partial structure tree and a partial source text', async () => {
     const tree = enc({ format: 'scf-tree/1', units: 'pt', root: { type: 'View' } });
-    const files: BundleFiles = new Map<string, any>([
+    const files: BundleFiles = new Map([
       ['scf.json', enc(base([{ id: 'x', image: 'images/a.png', structure: { file: 'structure/a.json', origin: 'dom', format: 'scf-tree/1' } }]))],
       ['images/a.png', PIXEL_PNG],
       ['structure/a.json', partial(tree, 50_000_000)],
@@ -78,7 +78,7 @@ describe('{head, size} entries are images only (ledger F50)', () => {
   });
 
   it('a partial entry with an image extension used as sourceText is treated as missing, not validated from its head', async () => {
-    const files: BundleFiles = new Map<string, any>([
+    const files: BundleFiles = new Map([
       ['scf.json', enc(base([{ id: 'x', image: 'images/a.png', sourceText: { file: 'source/a.png' } }], { optIn: { sourceText: true } }))],
       ['images/a.png', PIXEL_PNG],
       ['source/a.png', partial(PIXEL_PNG, 50_000_000)],
@@ -88,7 +88,7 @@ describe('{head, size} entries are images only (ledger F50)', () => {
   });
 
   it('still accepts a partial image', async () => {
-    const files: BundleFiles = new Map<string, any>([
+    const files: BundleFiles = new Map([
       ['scf.json', enc(base([{ id: 'x', image: 'images/a.png' }]))],
       ['images/a.png', partial(PIXEL_PNG, 1234)],
     ]);

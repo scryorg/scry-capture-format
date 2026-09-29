@@ -72,7 +72,7 @@ describe('BundleFiles image entries as {measured, family, width, height, size} (
   });
 
   it('rejects {measured} for a non-image member — the shape is restricted to images, same as {head, size} (F50/F69)', async () => {
-    const files: BundleFiles = new Map<string, any>([
+    const files: BundleFiles = new Map([
       ['scf.json', { measured: true, family: 'png', width: 1, height: 1, size: 500 }],
       ['images/a.png', { measured: true, family: 'png', width: 1, height: 1, size: 4096 }],
     ]);
@@ -82,7 +82,7 @@ describe('BundleFiles image entries as {measured, family, width, height, size} (
   });
 
   it('still flags an unreferenced {measured} image as FORBIDDEN_MEMBER', async () => {
-    const files: BundleFiles = new Map<string, any>([
+    const files: BundleFiles = new Map([
       ['scf.json', enc({ ...manifest, captures: [] })],
       ['images/a.png', { measured: true, family: 'png', width: 1, height: 1, size: 4096 }],
     ]);
