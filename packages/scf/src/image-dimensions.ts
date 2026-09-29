@@ -1,3 +1,5 @@
+import type { BundleFileMeasured } from './types.js';
+
 /**
  * Reads pixel width/height straight from an image's header — never decodes pixels — so the
  * validator can enforce the spec's "at most 16384 px on the longest side" without pulling in an
@@ -177,4 +179,18 @@ export function measureImage(prefixBytes: Uint8Array): MeasuredImage | null {
   const dims = readImageDimensions(prefixBytes, family);
   if (!dims) return null;
   return { family, width: dims.width, height: dims.height };
+}
+
+/**
+ * Ledger F126 (G7): builds the `{measured: true, ...}` record a streaming caller hands `validateBundle`
+ * from a bounded prefix. Unlike `measureImage` (which collapses "wrong format" and "right format,
+ * header unreadable" into `null`), this KEEPS the detected family when the dimensions cannot be read
+ * (`width`/`height` 0), so `validateBundle` reports IMAGE_HEADER_UNREADABLE for a truncated header,
+ * exactly like the directory/CLI path, instead of IMAGE_FORMAT_INVALID. Use this, not `measureImage`,
+ * in any streaming reader (upload route, build processing).
+ */
+export function measureImageRecord(prefixBytes: Uint8Array, size: number): BundleFileMeasured {
+  const family = detectImageFamily(prefixBytes);
+  const dims = family ? readImageDimensions(prefixBytes, family) : null;
+  return { measured: true, family, width: dims?.width ?? 0, height: dims?.height ?? 0, size };
 }

@@ -489,7 +489,16 @@ export async function validateBundle(input: BundleFiles | string): Promise<Valid
           if (size > MAX_IMAGE_BYTES) {
             errors.push(issue('IMAGE_TOO_LARGE', `Image is over 20 MB: ${image}`, { id, path: image }));
           }
-          if (family && (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION)) {
+          if (family && EXT_FAMILY[ext] === family && (width < 1 || height < 1)) {
+            // Ledger F126 (G7): family identified but no dimensions recorded (see `measureImageRecord`):
+            // the same IMAGE_HEADER_UNREADABLE the full-bytes path reports for a truncated header.
+            errors.push(
+              issue('IMAGE_HEADER_UNREADABLE', `Could not read image dimensions from the header: ${image}`, {
+                id,
+                path: image,
+              })
+            );
+          } else if (family && (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION)) {
             errors.push(
               issue(
                 'IMAGE_DIMENSION_TOO_LARGE',

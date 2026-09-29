@@ -5,6 +5,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+- **Streamed images report the same code as the CLI (ledger F126, G7):** a truncated image header was
+  `IMAGE_HEADER_UNREADABLE` via the directory/CLI path but `IMAGE_FORMAT_INVALID` via a streaming reader's
+  `{measured}` record (upload route), because `measureImage` collapses "wrong format" and "header unreadable" to
+  `null`. New `measureImageRecord(prefix, size)` keeps the detected family; `validateBundle` reports
+  `IMAGE_HEADER_UNREADABLE` for a `{measured}` record with a known family and no dimensions. Streaming readers
+  should build records with `measureImageRecord`. `test/measured-parity.test.ts` asserts every fixture gives the
+  same codes+messages through both paths.
+
 - **Validator enforces the schema's enums (ledger F125, G7):** `validateBundle` accepted manifests the published
   `schema/scf-1.0.json` rejects (e.g. `capture.method: "playwright-chromium"`, `capture.crop: "bogus"`). It now
   rejects every schema enum/const (`source.kind`, `source.platform`, `capture.method`, `capture.crop` incl.
