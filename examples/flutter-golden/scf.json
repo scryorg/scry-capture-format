@@ -3,14 +3,14 @@
   "scf": "1.0",
   "source": {
     "kind": "flutter-golden",
-    "platform": "android",
+    "platform": "other",
     "framework": "flutter",
     "tool": { "name": "scry-capture-flutter", "version": "0.1.0" }
   },
   "repository": { "url": "https://github.com/acme/kettle-flutter", "branch": "main" },
   "createdAt": "2026-10-04T00:00:00Z",
   "defaults": {
-    "capture": { "method": "emulator", "device": { "name": "Pixel 8", "os": "Android 15" }, "scale": 3 }
+    "capture": { "method": "headless-render", "device": { "name": "flutter_test 390x844@3x", "os": "flutter_test" }, "scale": 3 }
   },
   "counts": { "declared": 3, "captured": 3, "skipped": [] },
   "captures": [

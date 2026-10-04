@@ -14,5 +14,9 @@ describe('example bundles', () => {
     expect(result.manifest?.source.kind).toBe('flutter-golden');
     expect(result.manifest?.source.framework).toBe('flutter');
     expect(result.manifest?.captures).toHaveLength(3);
+    // Labelled as what the sample produces: a headless flutter_test render, not an emulator run (review F11).
+    expect(result.manifest?.source.platform).toBe('other');
+    expect(result.manifest?.defaults?.capture?.method).toBe('headless-render');
+    expect(result.manifest?.defaults?.capture?.device?.name).toBe('flutter_test 390x844@3x');
   });
 });
