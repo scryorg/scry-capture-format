@@ -5,6 +5,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+- **Flutter example bundle (feature flutter-capture, no schema change):** `examples/flutter-golden/` is a valid
+  three-screen bundle (`source.kind` `flutter-golden`, `framework` `flutter`, `capture.method` `emulator`) that passes
+  `scf validate`; `test/examples.test.ts` keeps it valid. `flutter-golden` was already a registered kind.
+
 - **Streamed images report the same code as the CLI (ledger F126, G7):** a truncated image header was
   `IMAGE_HEADER_UNREADABLE` via the directory/CLI path but `IMAGE_FORMAT_INVALID` via a streaming reader's
   `{measured}` record (upload route), because `measureImage` collapses "wrong format" and "header unreadable" to

@@ -84,13 +84,14 @@ optional structure/source-text files referenced from a capture, or JSON sidecars
 
 ## Reference adapters
 
-Three short, real scripts to copy from, in `examples/`:
+Three short, real scripts and one complete example bundle to copy from, in `examples/`:
 
 | File | What it shows |
 |---|---|
 | `examples/playwright-crawl/adapter.mjs` | Crawling a running web app with Playwright and writing one capture per page (a `crawler`-kind adapter with no story index to read from — you build the enumeration yourself). |
 | `examples/folder-of-pngs/adapter.mjs` | The simplest possible adapter: a tool that already writes `<name>.png` files with no manifest of its own, converted to SCF with the package's `fromSidecars()` (or written directly if you don't have Node). |
 | `examples/compose-preview/ComposePreviewScfWriter.kt` | Illustrative only (not built or run in this repo) — shows the same manifest shape written from a JVM test that has already rendered `@Preview` composables to bitmaps, for teams that can't shell out to Node from their test runner. |
+| `examples/flutter-golden/` | A valid, complete bundle (`scf.json` plus three images) as a Flutter app's capture writes it: `source.kind` `flutter-golden`, `framework` `flutter`, `capture.method` `emulator` (a no-device `flutter test` capture writes `platform: other` and `headless-render`). Run `npx @scrymore/scf validate examples/flutter-golden`. |
 
 Also see `converters/` for two worked conversions from formats you may already have: `fromSbcov` (this
 package, for sbcov's own legacy `metadata.json`) and `examples/argos-importer.mjs` (a script, not a package

@@ -62,7 +62,7 @@ spec/          the SCF 1.0 spec + changelog
 schema/        JSON Schema 2020-12 for the manifest and the scf-tree/1 structure format
 packages/scf/  the @scrymore/scf package: validator, converters, CLI
 fixtures/      conformance fixtures (valid/ and invalid/, the latter with expected.json)
-examples/      reference adapters and converters (Playwright, folder-of-PNGs, Compose, Argos)
+examples/      reference adapters and converters (Playwright, folder-of-PNGs, Compose, Flutter bundle, Argos)
 converters/    a pointer to where each converter lives and why
 AGENTS.md      how to write a Scry adapter, for a coding agent
 ```
