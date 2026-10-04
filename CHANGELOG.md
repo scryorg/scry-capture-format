@@ -6,7 +6,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 - **Flutter example bundle (feature flutter-capture, no schema change):** `examples/flutter-golden/` is a valid
-  three-screen bundle (`source.kind` `flutter-golden`, `framework` `flutter`, `capture.method` `emulator`) that passes
+  three-screen bundle (`source.kind` `flutter-golden`, `framework` `flutter`, `platform` `other`, `capture.method`
+  `headless-render`, device `flutter_test 390x844@3x`, the labels the Flutter sample writes) that passes
   `scf validate`; `test/examples.test.ts` keeps it valid. `flutter-golden` was already a registered kind.
 
 - **Streamed images report the same code as the CLI (ledger F126, G7):** a truncated image header was
