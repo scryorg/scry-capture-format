@@ -100,7 +100,7 @@ source/…             optional source-text files, referenced by a capture's sou
 | `scf` | MUST | Spec version, `"1.0"`. Scry accepts the current and the previous minor version. |
 | `source.kind` | MUST | What produced the captures. Registered values: `storybook`, `storybook-rn`, `compose-preview`, `swiftui-preview`, `uikit`, `widgetbook`, `flutter-golden`, `playwright`, `cypress`, `maestro`, `xcuitest`, `crawler`, `figma`, `argos`, `percy`, `docs`, `upload`. Anything else MUST be written as `x-<name>`. |
 | `source.platform` | SHOULD | `web`, `ios`, `android`, `macos`, `windows`, `email`, `other`. |
-| `source.framework` | MAY | `react`, `vue`, `react-native`, `compose`, `swiftui`, `flutter`, … |
+| `source.framework` | MAY | `react`, `vue`, `react-native`, `compose`, `swiftui`, `flutter`, … A complete Flutter example (`source.kind` `flutter-golden`) is in `examples/flutter-golden/`. |
 | `source.tool` | SHOULD | Name and version of the adapter. Shown on the dashboard, used when debugging a rejection. |
 | `repository` | MAY | Where the code lives; enables "open source file" links. |
 | `defaults` | MAY | Any capture field; applied to every capture that does not set it. Keeps bundles small. |
